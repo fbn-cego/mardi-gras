@@ -115,6 +115,9 @@ type Model struct {
 	// Data source mode (JSONL file watcher vs bd CLI polling)
 	sourceMode data.SourceMode
 
+	// Startup: issue ID from bd show --current, consumed after first parade build
+	pendingCurrentID string
+
 	// Single-flight gate for gt status polls
 	gtPollInFlight bool
 
@@ -190,11 +193,21 @@ func (m Model) Init() tea.Cmd {
 	} else if m.inTmux {
 		agentPoll = pollTmuxAgentState
 	}
-	return tea.Batch(
+	cmds := []tea.Cmd{
 		m.startPoll(),
 		agentPoll,
 		headerShimmerCmd(),
-	)
+	}
+	if m.sourceMode == data.SourceCLI {
+		cmds = append(cmds, fetchCurrentIssue)
+	}
+	return tea.Batch(cmds...)
+}
+
+// fetchCurrentIssue asks bd for the active issue ID at startup.
+func fetchCurrentIssue() tea.Msg {
+	id, _ := data.FetchCurrentIssueID()
+	return currentIssueMsg{issueID: id}
 }
 
 // startPoll returns the appropriate polling Cmd based on sourceMode.
@@ -361,6 +374,11 @@ type mutateResultMsg struct {
 
 // changeIndicatorExpiredMsg clears change indicators after timeout.
 type changeIndicatorExpiredMsg struct{}
+
+// currentIssueMsg carries the active issue ID from bd show --current at startup.
+type currentIssueMsg struct {
+	issueID string
+}
 
 // gasTownTickMsg drives liveness animations (breathing dots, duration timers).
 type gasTownTickMsg struct{}
@@ -1072,6 +1090,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case changeIndicatorExpiredMsg:
 		m.changedIDs = make(map[string]bool)
 		m.parade.ChangedIDs = nil
+		return m, nil
+
+	case currentIssueMsg:
+		if msg.issueID == "" {
+			return m, nil
+		}
+		if len(m.parade.Items) > 0 {
+			m.restoreParadeSelection(msg.issueID)
+			m.syncSelection()
+		} else {
+			m.pendingCurrentID = msg.issueID
+		}
 		return m, nil
 
 	case agentFinishedMsg:
@@ -2007,6 +2037,11 @@ func (m *Model) layout() {
 	if len(m.parade.Items) == 0 {
 		m.parade = views.NewParade(m.issues, paradeW, bodyH, m.blockingTypes)
 		m.syncSelection()
+		if m.pendingCurrentID != "" {
+			m.restoreParadeSelection(m.pendingCurrentID)
+			m.syncSelection()
+			m.pendingCurrentID = ""
+		}
 	}
 
 	m.detail.Viewport = viewport.New(detailW-2, bodyH)
