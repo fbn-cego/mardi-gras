@@ -302,13 +302,14 @@ func (g GasTown) Update(msg tea.Msg) (GasTown, tea.Cmd) {
 		return g, nil
 
 	case "enter":
-		if g.section == SectionConvoys {
+		switch g.section {
+		case SectionConvoys:
 			if g.expandedConvoy == g.convoyCursor {
 				g.expandedConvoy = -1
 			} else {
 				g.expandedConvoy = g.convoyCursor
 			}
-		} else if g.section == SectionMail {
+		case SectionMail:
 			if g.expandedMail == g.mailCursor {
 				g.expandedMail = -1
 			} else {
@@ -395,14 +396,15 @@ func (g GasTown) Update(msg tea.Msg) (GasTown, tea.Cmd) {
 		}
 
 	case "w":
-		if g.section == SectionAgents {
+		switch g.section {
+		case SectionAgents:
 			if a := g.SelectedAgent(); a != nil {
 				agent := *a
 				return g, func() tea.Msg {
 					return GasTownActionMsg{Type: "mail_compose", Agent: agent}
 				}
 			}
-		} else if g.section == SectionMail {
+		case SectionMail:
 			if m := g.SelectedMail(); m != nil {
 				// Compose a new message to the sender of the selected mail
 				agent := gastown.AgentRuntime{
@@ -932,9 +934,10 @@ func (g *GasTown) renderMail(width int) string {
 
 		// Type badge
 		typeBadge := ""
-		if m.Type == "task" {
+		switch m.Type {
+		case "task":
 			typeBadge = prioStyle.Render("[task] ")
-		} else if m.Type == "scavenge" {
+		case "scavenge":
 			typeBadge = prioStyle.Render("[scav] ")
 		}
 
