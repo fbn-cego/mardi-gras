@@ -50,6 +50,22 @@ func FetchIssuesCLI() ([]Issue, error) {
 	return issues, nil
 }
 
+// FetchCurrentIssueID runs `bd show --current --json` and returns the active issue ID.
+// Returns ("", nil) if no current issue exists (bd exits non-zero).
+func FetchCurrentIssueID() (string, error) {
+	out, err := runWithTimeout(timeoutShort, "bd", "show", "--current", "--json")
+	if err != nil {
+		return "", nil // bd exits non-zero when no current issue — not an error
+	}
+	var result struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(out, &result); err != nil {
+		return "", fmt.Errorf("bd show --current parse: %w", err)
+	}
+	return result.ID, nil
+}
+
 // FetchIssuesNow returns a tea.Cmd that fetches issues via bd CLI immediately
 // (no timer delay). Emits FileChangedMsg on success, FileWatchErrorMsg on failure.
 func FetchIssuesNow() tea.Cmd {
