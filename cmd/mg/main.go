@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/matt-wright86/mardi-gras/internal/app"
 	"github.com/matt-wright86/mardi-gras/internal/data"
 	"github.com/matt-wright86/mardi-gras/internal/tmux"
@@ -81,8 +81,9 @@ func main() {
 	}
 
 	// Run TUI
-	model := app.New(issues, source, blockingTypes)
-	p := tea.NewProgram(model, tea.WithAltScreen())
+	guard := app.NewOSCGuard()
+	model := app.NewWithGuard(issues, source, blockingTypes, guard)
+	p := tea.NewProgram(model, tea.WithFilter(guard.Filter()))
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
