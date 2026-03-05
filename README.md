@@ -3,6 +3,8 @@
 [![CI](https://github.com/quietpublish/mardi-gras/actions/workflows/ci.yml/badge.svg)](https://github.com/quietpublish/mardi-gras/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/quietpublish/mardi-gras)](https://github.com/quietpublish/mardi-gras/releases/latest)
 [![Go](https://img.shields.io/github/go-mod/go-version/quietpublish/mardi-gras)](https://go.dev/)
+[![Beads](https://img.shields.io/badge/Beads-%E2%89%A5%20v0.58-blueviolet)](https://github.com/steveyegge/beads)
+[![Gas Town](https://img.shields.io/badge/Gas%20Town-%E2%89%A5%20v0.10-blue)](https://github.com/steveyegge/gastown)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **Your Beads issues deserve a parade — not a spreadsheet.**
@@ -326,11 +328,17 @@ The Gas Town panel includes several data views below the interactive sections:
 
 ### Problems View (`p`)
 
-Press `p` to toggle the problems view overlay. It scans the current Gas Town status for operational issues:
+Press `p` to toggle the problems view overlay. It combines two sources of diagnostics:
 
+**Agent problems** — detected from Gas Town status:
 - Stalled agents (working but no progress)
 - Backoff loops (repeated retry failures)
 - Zombie sessions (agents that stopped reporting)
+
+**Doctor diagnostics** — from `bd doctor --agent` at startup:
+- Core system health (Dolt server, config, hooks)
+- Git integration issues
+- Suggested fix commands for each finding
 
 ### Environment
 
@@ -338,9 +346,9 @@ Gas Town features activate automatically when `gt` is on your PATH. Inside a Gas
 
 ## Built with
 
-- [BubbleTea](https://github.com/charmbracelet/bubbletea) — Elm Architecture for the terminal
-- [Lipgloss](https://github.com/charmbracelet/lipgloss) — CSS-like styling (the purple, gold, and green)
-- [Bubbles](https://github.com/charmbracelet/bubbles) — viewport scrolling
+- [BubbleTea v2](https://github.com/charmbracelet/bubbletea) — Elm Architecture for the terminal
+- [Lipgloss v2](https://github.com/charmbracelet/lipgloss) — CSS-like styling (the purple, gold, and green)
+- [Bubbles v2](https://github.com/charmbracelet/bubbles) — viewport scrolling
 
 Single binary, no runtime dependencies. Cross-compiles to Linux, macOS, and Windows via [GoReleaser](https://goreleaser.com).
 
