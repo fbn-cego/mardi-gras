@@ -26,14 +26,25 @@ func WindowName(issueID string) string {
 // LaunchInTmux opens a new tmux pane running claude to the right of the current pane.
 func LaunchInTmux(prompt, projectDir, issueID string) (string, error) {
 	paneName := WindowName(issueID)
-	cmd := exec.Command("tmux", "split-window",
+	// Build agent command based on detected runtime
+	var agentArgs []string
+	switch DetectRuntime() {
+	case RuntimeCursor:
+		agentArgs = []string{"cursor-agent", "-f", "-p", prompt}
+	default: // Claude Code
+		agentArgs = []string{"claude", "--teammate-mode", "tmux", prompt}
+	}
+
+	tmuxArgs := []string{"split-window",
 		"-h",        // vertical split (pane to the right)
 		"-l", "60%", // agent gets 60% of width
 		"-d", // don't switch focus
 		"-c", projectDir,
 		"-P", "-F", "#{pane_id}", // print the new pane ID
-		"--", "claude", "--teammate-mode", "tmux", prompt,
-	)
+		"--",
+	}
+	tmuxArgs = append(tmuxArgs, agentArgs...)
+	cmd := exec.Command("tmux", tmuxArgs...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("tmux split-window: %w", err)

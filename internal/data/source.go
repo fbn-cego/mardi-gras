@@ -103,6 +103,23 @@ func FetchDoctorDiagnostics() (*DoctorResult, error) {
 	return &result, nil
 }
 
+// FetchIssueDetail runs `bd show <id> --json` and returns the enriched issue.
+// Returns fields not available from bd list: notes, design, acceptance_criteria.
+func FetchIssueDetail(issueID string) (*Issue, error) {
+	out, err := runWithTimeout(timeoutShort, "bd", "show", issueID, "--json")
+	if err != nil {
+		return nil, fmt.Errorf("bd show: %w", err)
+	}
+	var issues []Issue
+	if err := json.Unmarshal(out, &issues); err != nil {
+		return nil, fmt.Errorf("bd show parse: %w", err)
+	}
+	if len(issues) == 0 {
+		return nil, fmt.Errorf("bd show: no issue returned")
+	}
+	return &issues[0], nil
+}
+
 // FetchIssuesNow returns a tea.Cmd that fetches issues via bd CLI immediately
 // (no timer delay). Emits FileChangedMsg on success, FileWatchErrorMsg on failure.
 func FetchIssuesNow() tea.Cmd {
