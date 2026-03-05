@@ -381,6 +381,12 @@ type commentsMsg struct {
 	err      error
 }
 
+type issueDetailMsg struct {
+	issueID string
+	issue   *data.Issue
+	err     error
+}
+
 type costsMsg struct {
 	costs *gastown.CostsOutput
 	err   error
@@ -1060,6 +1066,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case issueDetailMsg:
+		if msg.err == nil && msg.issue != nil {
+			if m.detail.Issue != nil && m.detail.Issue.ID == msg.issueID {
+				m.detail.SetRichDetail(msg.issueID, msg.issue)
+			}
+		}
+		return m, nil
+
 	case costsMsg:
 		if msg.err == nil && msg.costs != nil {
 			m.gasTown.SetCosts(msg.costs)
@@ -1576,6 +1590,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if cmd := m.maybeFetchComments(); cmd != nil {
 				cmds = append(cmds, cmd)
 			}
+			if cmd := m.maybeFetchIssueDetail(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
 			if len(cmds) > 0 {
 				return m, tea.Batch(cmds...)
 			}
@@ -2071,6 +2088,18 @@ func (m *Model) maybeFetchComments() tea.Cmd {
 	return fetchComments(issue.ID)
 }
 
+// maybeFetchIssueDetail returns a Cmd to fetch rich detail for the selected issue.
+func (m *Model) maybeFetchIssueDetail() tea.Cmd {
+	issue := m.parade.SelectedIssue
+	if issue == nil {
+		return nil
+	}
+	if m.detail.RichIssueID == issue.ID {
+		return nil
+	}
+	return fetchIssueDetail(issue.ID)
+}
+
 // layout recalculates dimensions for all sub-components.
 func (m *Model) layout() {
 	headerH := 2
@@ -2304,6 +2333,14 @@ func fetchComments(issueID string) tea.Cmd {
 	return func() tea.Msg {
 		comments, err := gastown.FetchComments(issueID)
 		return commentsMsg{issueID: issueID, comments: comments, err: err}
+	}
+}
+
+// fetchIssueDetail returns a Cmd that fetches rich detail for an issue.
+func fetchIssueDetail(issueID string) tea.Cmd {
+	return func() tea.Msg {
+		issue, err := data.FetchIssueDetail(issueID)
+		return issueDetailMsg{issueID: issueID, issue: issue, err: err}
 	}
 }
 

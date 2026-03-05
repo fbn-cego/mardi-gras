@@ -31,6 +31,7 @@ type Detail struct {
 	MoleculeIssueID  string // which issue the molecule data belongs to
 	Comments         []gastown.Comment
 	CommentsIssueID  string // which issue the comments belong to
+	RichIssueID      string // which issue has had rich detail fetched
 	MetadataSchema   *data.MetadataSchema
 }
 
@@ -60,6 +61,10 @@ func (d *Detail) SetIssue(issue *data.Issue) {
 		d.Comments = nil
 		d.CommentsIssueID = ""
 	}
+	// Clear stale rich detail when switching issues
+	if issue == nil || issue.ID != d.RichIssueID {
+		d.RichIssueID = ""
+	}
 	d.Viewport.SetContent(d.renderContent())
 	d.Viewport.GotoTop()
 }
@@ -79,6 +84,23 @@ func (d *Detail) SetComments(issueID string, comments []gastown.Comment) {
 	d.Comments = comments
 	d.CommentsIssueID = issueID
 	if d.Issue != nil {
+		d.Viewport.SetContent(d.renderContent())
+	}
+}
+
+// SetRichDetail enriches the current issue with fields from bd show (notes, design, acceptance_criteria).
+func (d *Detail) SetRichDetail(issueID string, rich *data.Issue) {
+	d.RichIssueID = issueID
+	if d.Issue != nil && d.Issue.ID == issueID && rich != nil {
+		if rich.Notes != "" {
+			d.Issue.Notes = rich.Notes
+		}
+		if rich.Design != "" {
+			d.Issue.Design = rich.Design
+		}
+		if rich.AcceptanceCriteria != "" {
+			d.Issue.AcceptanceCriteria = rich.AcceptanceCriteria
+		}
 		d.Viewport.SetContent(d.renderContent())
 	}
 }

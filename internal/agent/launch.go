@@ -8,10 +8,41 @@ import (
 	"github.com/matt-wright86/mardi-gras/internal/data"
 )
 
-// Available returns true if the claude CLI is on PATH.
+// Runtime identifies which AI agent binary to use.
+type Runtime string
+
+const (
+	RuntimeClaude Runtime = "claude"
+	RuntimeCursor Runtime = "cursor-agent"
+)
+
+// DetectRuntime returns the first available agent runtime on PATH.
+// Prefers Claude Code, falls back to Cursor.
+func DetectRuntime() Runtime {
+	if _, err := exec.LookPath("claude"); err == nil {
+		return RuntimeClaude
+	}
+	if _, err := exec.LookPath("cursor-agent"); err == nil {
+		return RuntimeCursor
+	}
+	return ""
+}
+
+// Available returns true if any supported agent CLI is on PATH.
 func Available() bool {
-	_, err := exec.LookPath("claude")
-	return err == nil
+	return DetectRuntime() != ""
+}
+
+// RuntimeLabel returns a display name for the runtime.
+func (r Runtime) RuntimeLabel() string {
+	switch r {
+	case RuntimeClaude:
+		return "Claude Code"
+	case RuntimeCursor:
+		return "Cursor"
+	default:
+		return "unknown"
+	}
 }
 
 // BuildPrompt composes the initial prompt for a Claude Code session
@@ -75,10 +106,17 @@ func BuildPrompt(issue data.Issue, deps data.DepEval, issueMap map[string]*data.
 	return b.String()
 }
 
-// Command returns an *exec.Cmd that launches claude interactively
+// Command returns an *exec.Cmd that launches the detected agent runtime
 // with the given prompt, working directory set to projectDir.
 func Command(prompt, projectDir string) *exec.Cmd {
-	c := exec.Command("claude", prompt)
+	rt := DetectRuntime()
+	var c *exec.Cmd
+	switch rt {
+	case RuntimeCursor:
+		c = exec.Command("cursor-agent", "-f", "-p", prompt)
+	default: // Claude Code
+		c = exec.Command("claude", prompt)
+	}
 	c.Dir = projectDir
 	return c
 }
