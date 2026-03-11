@@ -1,6 +1,7 @@
 package data
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -40,9 +41,14 @@ type MetadataSchema struct {
 // beadsConfig represents the top-level .beads/config.yaml structure,
 // only parsing the validation.metadata section we care about.
 type beadsConfig struct {
-	Validation struct {
+	IssuePrefix string `yaml:"issue-prefix"`
+	Validation  struct {
 		Metadata MetadataSchema `yaml:"metadata"`
 	} `yaml:"validation"`
+}
+
+type beadsMetadata struct {
+	DoltDatabase string `json:"dolt_database"`
 }
 
 // LoadMetadataSchema loads validation.metadata from .beads/config.yaml,
@@ -75,6 +81,46 @@ func LoadMetadataSchema(projectDir string) *MetadataSchema {
 	}
 
 	return schema
+}
+
+// LoadIssuePrefix returns the configured issue prefix when it can be resolved
+// from the local Beads metadata. It prefers config.yaml and falls back to the
+// conventional dolt database name in metadata.json (beads_<prefix>).
+func LoadIssuePrefix(projectDir string) string {
+	if projectDir == "" {
+		return ""
+	}
+
+	beadsDir := ResolveBeadsDir(filepath.Join(projectDir, ".beads"))
+	configPath := filepath.Join(beadsDir, "config.yaml")
+	raw, err := os.ReadFile(configPath)
+	if err == nil {
+		var cfg beadsConfig
+		if yaml.Unmarshal(raw, &cfg) == nil {
+			if prefix := strings.TrimSpace(cfg.IssuePrefix); prefix != "" {
+				return prefix
+			}
+		}
+	}
+
+	metadataPath := filepath.Join(beadsDir, "metadata.json")
+	raw, err = os.ReadFile(metadataPath)
+	if err != nil {
+		return ""
+	}
+
+	var meta beadsMetadata
+	if json.Unmarshal(raw, &meta) != nil {
+		return ""
+	}
+	return issuePrefixFromDatabase(meta.DoltDatabase)
+}
+
+func issuePrefixFromDatabase(name string) string {
+	if !strings.HasPrefix(name, "beads_") {
+		return ""
+	}
+	return strings.TrimPrefix(name, "beads_")
 }
 
 // ResolveBeadsDir follows a redirect file if present.

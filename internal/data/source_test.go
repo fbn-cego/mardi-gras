@@ -1,6 +1,8 @@
 package data
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -72,4 +74,54 @@ func TestCheckBdVersionUnparseable(t *testing.T) {
 			t.Errorf("parseBdVersionWarning(%q) = %q, want empty", input, got)
 		}
 	}
+}
+
+func TestBdListArgsIncludesFlat(t *testing.T) {
+	args := bdListArgs()
+	got := strings.Join(args, " ")
+	want := "list --json --flat --limit 0 --all"
+	if got != want {
+		t.Fatalf("bdListArgs() = %q, want %q", got, want)
+	}
+}
+
+func TestParseIssuesCLIOutputRejectsWrongSinglePrefix(t *testing.T) {
+	out := mustMarshalIssues(t, []Issue{
+		{ID: "vv-12", Title: "wrong project", Status: StatusOpen, Priority: PriorityMedium, IssueType: TypeBug},
+	})
+
+	_, err := parseIssuesCLIOutput(out, "mg")
+	if err == nil {
+		t.Fatal("expected prefix validation error, got nil")
+	}
+	if !strings.Contains(err.Error(), `expects "mg"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), `"vv" issues`) {
+		t.Fatalf("expected wrong prefix in error, got %v", err)
+	}
+}
+
+func TestParseIssuesCLIOutputAllowsExpectedAndHQPrefixes(t *testing.T) {
+	out := mustMarshalIssues(t, []Issue{
+		{ID: "hq-1", Title: "hq item", Status: StatusOpen, Priority: PriorityLow, IssueType: TypeTask},
+		{ID: "mg-2", Title: "local item", Status: StatusOpen, Priority: PriorityMedium, IssueType: TypeBug},
+	})
+
+	issues, err := parseIssuesCLIOutput(out, "mg")
+	if err != nil {
+		t.Fatalf("parseIssuesCLIOutput() error = %v", err)
+	}
+	if len(issues) != 2 {
+		t.Fatalf("len(issues) = %d, want 2", len(issues))
+	}
+}
+
+func mustMarshalIssues(t *testing.T, issues []Issue) []byte {
+	t.Helper()
+	out, err := json.Marshal(issues)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	return out
 }

@@ -71,12 +71,20 @@ func parseBdVersionWarning(output string) string {
 	return ""
 }
 
-// FetchIssuesCLI runs `bd list --json --limit 0 --all` and parses the result.
-func FetchIssuesCLI() ([]Issue, error) {
-	out, err := runWithTimeout(timeoutMedium, "bd", "list", "--json", "--limit", "0", "--all")
+// FetchIssuesCLI runs `bd list --json --flat --limit 0 --all` and parses the result.
+func FetchIssuesCLI(projectDir string) ([]Issue, error) {
+	out, err := runWithTimeout(timeoutMedium, "bd", bdListArgs()...)
 	if err != nil {
-		return nil, wrapExitError("bd list --json", err)
+		return nil, wrapExitError("bd list --json --flat", err)
 	}
+	return parseIssuesCLIOutput(out, LoadIssuePrefix(projectDir))
+}
+
+func bdListArgs() []string {
+	return []string{"list", "--json", "--flat", "--limit", "0", "--all"}
+}
+
+func parseIssuesCLIOutput(out []byte, expectedPrefix string) ([]Issue, error) {
 	var issues []Issue
 	if err := json.Unmarshal(out, &issues); err != nil {
 		// Check if bd returned tree-formatted text instead of JSON
@@ -86,8 +94,52 @@ func FetchIssuesCLI() ([]Issue, error) {
 		}
 		return nil, fmt.Errorf("bd list parse: %w", err)
 	}
+	if err := validateIssuePrefixes(issues, expectedPrefix); err != nil {
+		return nil, err
+	}
 	SortIssues(issues)
 	return issues, nil
+}
+
+func validateIssuePrefixes(issues []Issue, expectedPrefix string) error {
+	expectedPrefix = strings.TrimSpace(expectedPrefix)
+	if expectedPrefix == "" || len(issues) == 0 {
+		return nil
+	}
+
+	seenExpected := false
+	mismatched := make(map[string]bool)
+	for _, issue := range issues {
+		prefix := issuePrefixFromID(issue.ID)
+		if prefix == "" {
+			continue
+		}
+		if prefix == expectedPrefix {
+			seenExpected = true
+			continue
+		}
+		if prefix == "hq" {
+			continue
+		}
+		mismatched[prefix] = true
+	}
+
+	if seenExpected || len(mismatched) != 1 {
+		return nil
+	}
+
+	for prefix := range mismatched {
+		return fmt.Errorf("bd list returned %q issues, but this workspace expects %q — possible cross-project Dolt routing", prefix, expectedPrefix)
+	}
+	return nil
+}
+
+func issuePrefixFromID(id string) string {
+	prefix, _, ok := strings.Cut(strings.TrimSpace(id), "-")
+	if !ok || prefix == "" {
+		return ""
+	}
+	return prefix
 }
 
 // FetchCurrentIssueID runs `bd show --current --json` and returns the active issue ID.
@@ -163,9 +215,9 @@ func FetchIssueDetail(issueID string) (*Issue, error) {
 
 // FetchIssuesNow returns a tea.Cmd that fetches issues via bd CLI immediately
 // (no timer delay). Emits FileChangedMsg on success, FileWatchErrorMsg on failure.
-func FetchIssuesNow() tea.Cmd {
+func FetchIssuesNow(projectDir string) tea.Cmd {
 	return func() tea.Msg {
-		issues, err := FetchIssuesCLI()
+		issues, err := FetchIssuesCLI(projectDir)
 		if err != nil {
 			return FileWatchErrorMsg{Err: err}
 		}
