@@ -54,11 +54,11 @@ func WatchFile(path string, lastMod time.Time) tea.Cmd {
 	})
 }
 
-// PollCLI polls bd list --json on a timer and emits FileChangedMsg or FileWatchErrorMsg.
+// PollCLI polls bd list --json --flat on a timer and emits FileChangedMsg or FileWatchErrorMsg.
 // The app's diffIssues() handles no-op detection when nothing changed.
-func PollCLI() tea.Cmd {
+func PollCLI(projectDir string) tea.Cmd {
 	return tea.Tick(cliPollInterval, func(time.Time) tea.Msg {
-		issues, err := FetchIssuesCLI()
+		issues, err := FetchIssuesCLI(projectDir)
 		if err != nil {
 			return FileWatchErrorMsg{Err: err}
 		}

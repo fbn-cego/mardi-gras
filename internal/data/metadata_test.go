@@ -262,3 +262,49 @@ validation:
 		t.Fatalf("mode = %q, want %q", schema.Mode, "none")
 	}
 }
+
+func TestLoadIssuePrefixEmpty(t *testing.T) {
+	if got := LoadIssuePrefix(""); got != "" {
+		t.Fatalf("LoadIssuePrefix(\"\") = %q, want empty", got)
+	}
+}
+
+func TestLoadIssuePrefixPrefersConfig(t *testing.T) {
+	dir := t.TempDir()
+	beadsDir := filepath.Join(dir, ".beads")
+	if err := os.MkdirAll(beadsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	config := `
+issue-prefix: mg
+validation:
+  metadata:
+    mode: none
+`
+	if err := os.WriteFile(filepath.Join(beadsDir, "config.yaml"), []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(beadsDir, "metadata.json"), []byte(`{"dolt_database":"beads_vv"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := LoadIssuePrefix(dir); got != "mg" {
+		t.Fatalf("LoadIssuePrefix() = %q, want %q", got, "mg")
+	}
+}
+
+func TestLoadIssuePrefixFallsBackToMetadata(t *testing.T) {
+	dir := t.TempDir()
+	beadsDir := filepath.Join(dir, ".beads")
+	if err := os.MkdirAll(beadsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(beadsDir, "metadata.json"), []byte(`{"dolt_database":"beads_mg"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := LoadIssuePrefix(dir); got != "mg" {
+		t.Fatalf("LoadIssuePrefix() = %q, want %q", got, "mg")
+	}
+}

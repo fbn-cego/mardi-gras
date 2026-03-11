@@ -184,7 +184,7 @@ type Model struct {
 ### Lifecycle
 
 **Init()** starts two concurrent commands:
-- `m.startPoll()` — JSONL mode: `data.WatchFile(path, lastMod)` polls every 1.2s; CLI mode: `data.PollCLI()` runs `bd list --json` every 5s
+- `m.startPoll()` — JSONL mode: `data.WatchFile(path, lastMod)` polls every 1.2s; CLI mode: `data.PollCLI(projectDir)` runs `bd list --json --flat` every 5s
 - Agent state poll — queries tmux or `gt status --json`. Uses a single-flight gate (`gtPollInFlight`) to prevent overlapping `gt status` calls (which take ~9s). Init bypasses the gate for the first poll; subsequent calls from watcher and user actions go through `gatedPollAgentState()`.
 
 **Update(msg)** routes messages. The full message set:
@@ -287,14 +287,14 @@ Parse flags (--path, --block-types, --status, --version)
     v
 resolveSource(cwd, pathFlag):
   --path flag given?          --> SourceJSONL (explicit)
-  .beads/issues.jsonl found?  --> SourceJSONL (auto-detected, walk up dirs)
-  .beads/ dir + bd on PATH?   --> SourceCLI (fallback for bd 0.56+)
+  .beads/ dir + bd on PATH?   --> SourceCLI (preferred)
+  .beads/issues.jsonl found?  --> SourceJSONL (legacy fallback)
   none of the above           --> exit with error
     |
     v
 Initial load based on source.Mode:
   SourceJSONL: data.LoadIssues(path)
-  SourceCLI:   data.FetchIssuesCLI()  (bd list --json --limit 0 --all)
+  SourceCLI:   data.FetchIssuesCLI(projectDir)  (bd list --json --flat --limit 0 --all)
     |
     v
 --status mode?

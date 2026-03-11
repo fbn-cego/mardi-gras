@@ -253,7 +253,7 @@ func fetchDoctorDiagnostics() tea.Msg {
 // startPoll returns the appropriate polling Cmd based on sourceMode.
 func (m Model) startPoll() tea.Cmd {
 	if m.sourceMode == data.SourceCLI {
-		return data.PollCLI()
+		return data.PollCLI(m.projectDir)
 	}
 	return data.WatchFile(m.watchPath, m.lastFileMod)
 }
@@ -261,7 +261,7 @@ func (m Model) startPoll() tea.Cmd {
 // startPollImmediate returns an immediate-fetch Cmd for post-mutation refresh.
 func (m Model) startPollImmediate() tea.Cmd {
 	if m.sourceMode == data.SourceCLI {
-		return data.FetchIssuesNow()
+		return data.FetchIssuesNow(m.projectDir)
 	}
 	return data.WatchFile(m.watchPath, m.lastFileMod)
 }

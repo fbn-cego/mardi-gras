@@ -56,7 +56,7 @@ func main() {
 	var issues []data.Issue
 	switch source.Mode {
 	case SourceCLI:
-		issues, err = data.FetchIssuesCLI()
+		issues, err = data.FetchIssuesCLI(source.ProjectDir)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error loading issues via bd list: %v\n\n", err)
 			fmt.Fprintf(os.Stderr, "Ensure the Dolt server is running (dolt sql-server) and bd is working.\n")
