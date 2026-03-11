@@ -481,7 +481,7 @@ Pressing `a` on a selected issue launches Claude Code with a context-rich prompt
 - **In tmux (no Gas Town)**: opens a new tmux window tagged with `@mg_agent=mg-<issueID>` for discovery
 - **Outside tmux**: suspends the TUI via `tea.ExecProcess`, resumes on exit
 
-The app polls for agent state: tmux windows (when in tmux) or `gt status --json` (when Gas Town available). Status badges appear in the header, parade list, and detail view.
+The app auto-detects the available agent runtime at startup (Claude Code via `claude` on PATH, or Cursor via `cursor-agent` on PATH). The detected runtime name appears in the command palette. The app polls for agent state: tmux windows (when in tmux) or `gt status --json` (when Gas Town available). Status badges appear in the header, parade list, and detail view.
 
 Additional agent operations from the Gas Town panel:
 - `n` — nudge agent with a message
