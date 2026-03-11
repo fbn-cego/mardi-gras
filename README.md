@@ -92,7 +92,7 @@ MG_DEBUG=1 mg
 
 Mardi Gras auto-detects your data source — no daemon, no config file. It supports two modes:
 
-- **CLI mode** (preferred): uses `bd list --json` when `bd` is on PATH (Beads v0.56+; **avoid v0.59.0** which has a known `--json` bug)
+- **CLI mode** (preferred): uses `bd list --json` when `bd` is on PATH (Beads v0.56+; v0.59.1+ recommended for structured error handling)
 - **JSONL mode** (legacy): reads `.beads/issues.jsonl` directly (walks up directories to find it)
 
 Both modes poll for changes automatically, so if an agent updates an issue while you're watching, the parade reshuffles in real time. The `--path` flag forces JSONL mode for a specific file. The default blocking types are `blocks` and `conditional-blocks`.
@@ -296,6 +296,7 @@ Outside tmux, the TUI suspends while the agent runs (using BubbleTea's `tea.Exec
 ### Requirements
 
 - Requires `claude` or `cursor-agent` on your `PATH`
+- The command palette dynamically shows the detected runtime name (e.g., "Start Claude Code agent" or "Start Cursor agent")
 - If no agent runtime is found, the `a` key silently does nothing
 - Tmux dispatch requires both the `TMUX` env var and `tmux` binary on PATH
 - The prompt includes `bd update` and `bd close` hints so the agent knows how to manage the issue lifecycle

@@ -74,7 +74,7 @@ internal/
   data/               Domain types, JSONL parsing, filtering, file watcher
   views/              Parade, Detail, Gas Town panel, Problems overlay
   components/         Header, Footer, Help, Command palette, Toast, Create form
-  agent/              Claude Code integration and tmux dispatch
+  agent/              Agent runtime detection (Claude Code, Cursor) and tmux dispatch
   gastown/            Gas Town integration (status, sling, convoy, mail, analytics)
   tmux/               tmux status line widget (--status mode)
   ui/                 Theme colors, lipgloss styles, Unicode symbols, HOP badges
