@@ -1,23 +1,53 @@
 package gastown
 
+import "fmt"
+
 // Problem represents a detected issue with a Gas Town agent or beads infrastructure.
 type Problem struct {
-	Type     string       // "stalled", "backoff", "zombie", "doctor"
-	Agent    AgentRuntime // the affected agent (zero value for doctor problems)
-	Detail   string       // human-readable description
-	Severity string       // "warn", "error"
-	Category string       // doctor category (e.g. "Core System", "Git Integration")
-	Fix      string       // suggested fix command, if any
+	Type     string          // "stalled", "backoff", "zombie", "dead_rig", "doctor"
+	Agent    AgentRuntime    // the affected agent (zero value for rig-level/doctor problems)
+	Detail   string          // human-readable description
+	Severity string          // "warn", "error"
+	Category string          // doctor category (e.g. "Core System", "Git Integration")
+	Fix      string          // suggested fix command, if any
+	RigName  string          // rig name for rig-level problems
+	Orphans  []OrphanedIssue // orphaned issues for dead_rig problems
 }
 
 // DetectProblems analyzes TownStatus and returns any detected problems.
 // All heuristics are stateless — derived from a single status snapshot.
+//
+// Dead-rig detection groups orphaned agents under a single "dead_rig"
+// problem instead of emitting individual "zombie" entries, reducing
+// alarm fatigue when an entire rig is down.
 func DetectProblems(status *TownStatus) []Problem {
 	if status == nil {
 		return nil
 	}
 
+	// Identify dead rigs (0 polecats + orphaned work) so we can
+	// suppress individual zombie problems for agents on those rigs.
+	deadRigs := make(map[string]bool)
+	for _, rigName := range FindDeadRigs(status) {
+		deadRigs[rigName] = true
+	}
+
 	var problems []Problem
+
+	// Emit dead_rig problems first (highest severity).
+	for rigName := range deadRigs {
+		orphans := FindOrphans(status, rigName)
+		detail := fmt.Sprintf("Rig has 0 polecats — %d issues left without an agent", len(orphans))
+		problems = append(problems, Problem{
+			Type:     "dead_rig",
+			Detail:   detail,
+			Severity: "error",
+			RigName:  rigName,
+			Orphans:  orphans,
+			Fix:      "gt sling <issue> " + rigName,
+		})
+	}
+
 	for _, a := range status.Agents {
 		// Stalled: agent is running, has work, but idle (should be working)
 		if a.HasWork && a.State == "idle" {
@@ -49,8 +79,9 @@ func DetectProblems(status *TownStatus) []Problem {
 			})
 		}
 
-		// Zombie: agent not running but has hooked work
-		if !a.Running && a.HookBead != "" {
+		// Zombie: agent not running but has hooked work.
+		// Skip agents on dead rigs — they are already covered by dead_rig.
+		if !a.Running && a.HookBead != "" && !deadRigs[a.Rig] {
 			problems = append(problems, Problem{
 				Type:     "zombie",
 				Agent:    a,
