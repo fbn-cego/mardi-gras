@@ -46,9 +46,13 @@ func TestDetectProblemsBackoff(t *testing.T) {
 }
 
 func TestDetectProblemsZombie(t *testing.T) {
+	// Zombie on a rig WITH polecats — should still emit zombie.
 	status := &TownStatus{
+		Rigs: []RigStatus{
+			{Name: "myrig", PolecatCount: 1},
+		},
 		Agents: []AgentRuntime{
-			{Name: "Stale", Role: "polecat", Running: false, HookBead: "bd-e5f6"},
+			{Name: "Stale", Role: "polecat", Rig: "myrig", Running: false, HookBead: "bd-e5f6"},
 		},
 	}
 	problems := DetectProblems(status)
@@ -95,6 +99,77 @@ func TestDetectProblemsHealthy(t *testing.T) {
 	problems := DetectProblems(status)
 	if len(problems) != 0 {
 		t.Errorf("expected 0 problems for healthy agents, got %d", len(problems))
+	}
+}
+
+func TestDetectProblemsDeadRig(t *testing.T) {
+	status := &TownStatus{
+		Rigs: []RigStatus{
+			{Name: "mardi_gras", PolecatCount: 0},
+		},
+		Agents: []AgentRuntime{
+			{Name: "obsidian", Role: "polecat", Rig: "mardi_gras",
+				Running: false, HookBead: "mg-001", WorkTitle: "Fix auth"},
+			{Name: "quartz", Role: "polecat", Rig: "mardi_gras",
+				Running: false, HookBead: "mg-002", WorkTitle: "Add tests"},
+		},
+	}
+	problems := DetectProblems(status)
+
+	// Should emit one dead_rig, NOT two zombies.
+	var deadRig, zombie int
+	for _, p := range problems {
+		switch p.Type {
+		case "dead_rig":
+			deadRig++
+		case "zombie":
+			zombie++
+		}
+	}
+	if deadRig != 1 {
+		t.Errorf("expected 1 dead_rig problem, got %d", deadRig)
+	}
+	if zombie != 0 {
+		t.Errorf("expected 0 zombie problems (suppressed by dead_rig), got %d", zombie)
+	}
+
+	// Verify orphans are attached to the dead_rig problem.
+	for _, p := range problems {
+		if p.Type == "dead_rig" {
+			if len(p.Orphans) != 2 {
+				t.Errorf("expected 2 orphans on dead_rig, got %d", len(p.Orphans))
+			}
+			if p.RigName != "mardi_gras" {
+				t.Errorf("expected rig name mardi_gras, got %q", p.RigName)
+			}
+		}
+	}
+}
+
+func TestDetectProblemsDeadRigDoesNotSuppressOtherRigZombie(t *testing.T) {
+	status := &TownStatus{
+		Rigs: []RigStatus{
+			{Name: "dead_rig", PolecatCount: 0},
+			{Name: "live_rig", PolecatCount: 2},
+		},
+		Agents: []AgentRuntime{
+			{Name: "obsidian", Role: "polecat", Rig: "dead_rig",
+				Running: false, HookBead: "dr-001"},
+			{Name: "quartz", Role: "polecat", Rig: "live_rig",
+				Running: false, HookBead: "lr-001"},
+		},
+	}
+	problems := DetectProblems(status)
+
+	types := map[string]int{}
+	for _, p := range problems {
+		types[p.Type]++
+	}
+	if types["dead_rig"] != 1 {
+		t.Errorf("expected 1 dead_rig, got %d", types["dead_rig"])
+	}
+	if types["zombie"] != 1 {
+		t.Errorf("expected 1 zombie (from live_rig), got %d", types["zombie"])
 	}
 }
 
