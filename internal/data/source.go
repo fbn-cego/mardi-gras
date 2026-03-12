@@ -71,17 +71,17 @@ func parseBdVersionWarning(output string) string {
 	return ""
 }
 
-// FetchIssuesCLI runs `bd list --json --flat --limit 0 --all` and parses the result.
+// FetchIssuesCLI runs `bd list --json --limit 0 --all` and parses the result.
 func FetchIssuesCLI(projectDir string) ([]Issue, error) {
 	out, err := runWithTimeout(timeoutMedium, "bd", bdListArgs()...)
 	if err != nil {
-		return nil, wrapExitError("bd list --json --flat", err)
+		return nil, wrapExitError("bd list --json", err)
 	}
 	return parseIssuesCLIOutput(out, LoadIssuePrefix(projectDir))
 }
 
 func bdListArgs() []string {
-	return []string{"list", "--json", "--flat", "--limit", "0", "--all"}
+	return []string{"list", "--json", "--limit", "0", "--all"}
 }
 
 func parseIssuesCLIOutput(out []byte, expectedPrefix string) ([]Issue, error) {
