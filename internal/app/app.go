@@ -1137,6 +1137,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case views.GasTownActionMsg:
 		return m.handleGasTownAction(msg)
 
+	case views.RecoveryActionMsg:
+		return m.handleRecoveryAction(msg)
+
+	case recoveryResultMsg:
+		return m.handleRecoveryResult(msg)
+
 	case mutateResultMsg:
 		if msg.err != nil {
 			toast, cmd := components.ShowToast(
@@ -1293,7 +1299,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// When Problems panel is focused, route its keys before global handlers
 	if m.showProblems && m.activPane == PaneDetail {
 		switch msg.String() {
-		case "j", "k", "up", "down", "g", "G", "n", "h", "K":
+		case "j", "k", "up", "down", "g", "G", "n", "h", "K", "R":
 			logAction("problems panel key: %s", msg.String())
 			var cmd tea.Cmd
 			m.problems, cmd = m.problems.Update(msg)
@@ -2092,6 +2098,65 @@ func (m Model) handleGasTownAction(msg views.GasTownActionMsg) (tea.Model, tea.C
 		return m, textinput.Blink
 	}
 	return m, nil
+}
+
+// recoveryResultMsg reports the result of a rig recovery operation.
+type recoveryResultMsg struct {
+	rigName string
+	result  gastown.RecoveryResult
+}
+
+// handleRecoveryAction initiates rig recovery for a dead rig.
+func (m Model) handleRecoveryAction(msg views.RecoveryActionMsg) (tea.Model, tea.Cmd) {
+	rigName := msg.RigName
+	orphans := msg.Orphans
+
+	toast, toastCmd := components.ShowToast(
+		fmt.Sprintf("Recovering rig %s (%d orphans)...", rigName, len(orphans)),
+		components.ToastInfo, toastDuration,
+	)
+	m.toast = toast
+
+	recoverCmd := func() tea.Msg {
+		result := gastown.RecoverRig(orphans, rigName, gastown.RecoveryResling, "")
+		return recoveryResultMsg{rigName: rigName, result: result}
+	}
+
+	return m, tea.Batch(toastCmd, recoverCmd)
+}
+
+// handleRecoveryResult processes the result of a rig recovery and shows a toast.
+func (m Model) handleRecoveryResult(msg recoveryResultMsg) (tea.Model, tea.Cmd) {
+	r := msg.result
+	released := len(r.Released)
+	reslung := len(r.Reslung)
+	failCount := len(r.ReleaseFail) + len(r.SlingFail)
+
+	var toastMsg string
+	toastType := components.ToastSuccess
+	switch {
+	case failCount > 0:
+		toastType = components.ToastError
+		toastMsg = fmt.Sprintf("Rig %s: %d released, %d reslung, %d failed",
+			msg.rigName, released, reslung, failCount)
+	case released == 0:
+		toastType = components.ToastInfo
+		toastMsg = fmt.Sprintf("Rig %s: nothing to recover", msg.rigName)
+	default:
+		toastMsg = fmt.Sprintf("Rig %s recovered: %d issues released + reslung",
+			msg.rigName, released)
+	}
+
+	toast, cmd := components.ShowToast(toastMsg, toastType, toastDuration)
+	m.toast = toast
+
+	// Refresh Gas Town status after recovery
+	refreshCmd := func() tea.Msg {
+		status, err := gastown.FetchStatus()
+		return townStatusMsg{status: status, err: err}
+	}
+
+	return m, tea.Batch(cmd, refreshCmd)
 }
 
 // diffIssues compares new issues against the previous snapshot and returns the count of changes.

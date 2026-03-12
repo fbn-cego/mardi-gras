@@ -211,6 +211,83 @@ func TestProblemsDecommissionOnlyPolecat(t *testing.T) {
 	}
 }
 
+func TestProblemsViewDeadRig(t *testing.T) {
+	p := NewProblems(100, 30)
+	problems := []gastown.Problem{
+		{
+			Type:     "dead_rig",
+			Detail:   "Rig has 0 polecats — 2 issues left without an agent",
+			Severity: "error",
+			RigName:  "mardi_gras",
+			Orphans: []gastown.OrphanedIssue{
+				{IssueID: "mg-001", Title: "Fix auth", AgentName: "obsidian"},
+				{IssueID: "mg-002", Title: "Add tests", AgentName: "quartz"},
+			},
+		},
+	}
+	p.SetProblems(problems)
+
+	view := p.View()
+	if !strings.Contains(view, "DEAD_RIG") {
+		t.Fatal("should show DEAD_RIG type label")
+	}
+	if !strings.Contains(view, "mardi_gras") {
+		t.Fatal("should show rig name")
+	}
+	if !strings.Contains(view, "mg-001") {
+		t.Fatal("should show orphan issue ID mg-001")
+	}
+	if !strings.Contains(view, "mg-002") {
+		t.Fatal("should show orphan issue ID mg-002")
+	}
+	if !strings.Contains(view, "obsidian") {
+		t.Fatal("should show dead agent name")
+	}
+	if !strings.Contains(view, "R recover rig") {
+		t.Fatal("should show recovery hint when dead_rig present")
+	}
+}
+
+func TestProblemsRecoveryAction(t *testing.T) {
+	p := NewProblems(100, 30)
+	orphans := []gastown.OrphanedIssue{
+		{IssueID: "mg-001", Title: "Fix auth", AgentName: "obsidian"},
+	}
+	problems := []gastown.Problem{
+		{Type: "dead_rig", Severity: "error", RigName: "mardi_gras", Orphans: orphans},
+	}
+	p.SetProblems(problems)
+
+	_, cmd := p.Update(tea.KeyPressMsg{Code: 'R', Text: "R"})
+	if cmd == nil {
+		t.Fatal("expected cmd from R on dead_rig")
+	}
+	msg := cmd()
+	action, ok := msg.(RecoveryActionMsg)
+	if !ok {
+		t.Fatalf("expected RecoveryActionMsg, got %T", msg)
+	}
+	if action.RigName != "mardi_gras" {
+		t.Fatalf("expected rig mardi_gras, got %q", action.RigName)
+	}
+	if len(action.Orphans) != 1 {
+		t.Fatalf("expected 1 orphan, got %d", len(action.Orphans))
+	}
+}
+
+func TestProblemsRecoveryActionOnlyDeadRig(t *testing.T) {
+	p := NewProblems(100, 30)
+	problems := []gastown.Problem{
+		{Type: "stalled", Agent: gastown.AgentRuntime{Name: "Toast"}, Severity: "warn"},
+	}
+	p.SetProblems(problems)
+
+	_, cmd := p.Update(tea.KeyPressMsg{Code: 'R', Text: "R"})
+	if cmd != nil {
+		t.Fatal("expected no cmd from R on non-dead_rig problem")
+	}
+}
+
 func TestProblemsNoActionWhenEmpty(t *testing.T) {
 	p := NewProblems(100, 30)
 

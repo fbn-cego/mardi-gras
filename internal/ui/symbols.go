@@ -80,6 +80,7 @@ const (
 
 	// Problems
 	SymWarning = "⚠"
+	SymDeadRig = "💀"
 
 	// Molecule steps
 	SymStepDone    = "✓"

@@ -768,7 +768,15 @@ func renderRigs(rigs []gastown.RigStatus, width int) string {
 		nameStyle := lipgloss.NewStyle().Foreground(ui.Light).Bold(true)
 		infoStyle := lipgloss.NewStyle().Foreground(ui.Muted)
 
-		line := fmt.Sprintf("  %s  %s",
+		// Dead rig indicator: 0 polecats = skull prefix
+		prefix := "  "
+		if r.PolecatCount == 0 {
+			prefix = "  " + lipgloss.NewStyle().Foreground(ui.StatusStalled).Render(ui.SymDeadRig) + " "
+			nameStyle = nameStyle.Foreground(ui.StatusStalled)
+		}
+
+		line := fmt.Sprintf("%s%s  %s",
+			prefix,
 			nameStyle.Render(r.Name),
 			infoStyle.Render(strings.Join(badges, " | ")))
 		lines = append(lines, line)
