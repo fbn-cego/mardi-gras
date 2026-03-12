@@ -340,7 +340,7 @@ Two polling strategies, selected by `sourceMode`:
 
 **JSONL mode** (`data.WatchFile`): polls file modtime every 1.2s, emits `FileChangedMsg` on change, `FileUnchangedMsg` when unchanged.
 
-**CLI mode** (`data.PollCLI`): runs `bd list --json --limit 0 --all` every 5s, always emits `FileChangedMsg` (the app's `diffIssues()` detects no-ops). Errors emit `FileWatchErrorMsg` and show a toast.
+**CLI mode** (`data.PollCLI`): runs `bd list --json --flat --limit 0 --all` every 5s, always emits `FileChangedMsg` (the app's `diffIssues()` detects no-ops). Errors emit `FileWatchErrorMsg` and show a toast.
 
 Both use `startPoll()` and `startPollImmediate()` helpers so message handlers are mode-agnostic. After mutations (status change, issue create), `startPollImmediate()` triggers an instant re-fetch regardless of mode.
 
