@@ -79,10 +79,10 @@ func TestCheckBdVersionUnparseable(t *testing.T) {
 	}
 }
 
-func TestBdListArgsIncludesFlat(t *testing.T) {
+func TestBdListArgs(t *testing.T) {
 	args := bdListArgs()
 	got := strings.Join(args, " ")
-	want := "list --json --flat --limit 0 --all"
+	want := "list --json --limit 0 --all"
 	if got != want {
 		t.Fatalf("bdListArgs() = %q, want %q", got, want)
 	}
