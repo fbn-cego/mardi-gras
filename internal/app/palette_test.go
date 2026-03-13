@@ -134,6 +134,7 @@ func TestBuildPaletteCommandsBase(t *testing.T) {
 		components.ActionCopyBranch:      false,
 		components.ActionToggleFocus:     false,
 		components.ActionFilter:          false,
+		components.ActionFilterByEpic:    false,
 		components.ActionHelp:            false,
 		components.ActionQuit:            false,
 	}
@@ -216,4 +217,54 @@ func TestBuildPaletteCommandsConditional(t *testing.T) {
 			t.Error("expected ActionKillAgent when agentAvail=true")
 		}
 	})
+}
+
+func TestEKeyOpensEpicPicker(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "mg-100", Title: "Auth epic", IssueType: data.TypeEpic, Status: data.StatusOpen},
+		{ID: "mg-100.1", Title: "Login", IssueType: data.TypeTask, Status: data.StatusOpen},
+		{ID: "mg-200", Title: "Other task", IssueType: data.TypeTask, Status: data.StatusOpen},
+	}
+	m := New(issues, data.Source{}, data.DefaultBlockingTypes)
+	m.startedAt = time.Now().Add(-time.Second)
+	model, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	got := model.(Model)
+
+	// Press 'e' to open epic picker
+	model, _ = got.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	got = model.(Model)
+
+	if !got.showPalette {
+		t.Fatal("expected showPalette to be true after pressing e")
+	}
+	if !got.epicPicking {
+		t.Fatal("expected epicPicking to be true after pressing e")
+	}
+}
+
+func TestEpicPickerWithActiveFilter(t *testing.T) {
+	issues := []data.Issue{
+		{ID: "mg-100", Title: "Auth epic", IssueType: data.TypeEpic, Status: data.StatusOpen},
+		{ID: "mg-100.1", Title: "Login", IssueType: data.TypeTask, Status: data.StatusOpen},
+	}
+	m := New(issues, data.Source{}, data.DefaultBlockingTypes)
+	m.startedAt = time.Now().Add(-time.Second)
+	model, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	got := model.(Model)
+
+	// Set an active epic filter
+	got.epicFilter = "mg-100"
+
+	// Press 'e' — should include clear entry
+	model, _ = got.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	got = model.(Model)
+
+	if !got.epicPicking {
+		t.Fatal("expected epicPicking to be true")
+	}
+
+	// First entry should be the "clear" entry (Name == "")
+	if got.palette.SelectedName() != "" {
+		t.Fatalf("expected first entry to be clear (empty name), got %q", got.palette.SelectedName())
+	}
 }

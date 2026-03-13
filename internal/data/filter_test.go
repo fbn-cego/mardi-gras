@@ -121,6 +121,67 @@ func TestFilterIssuesFuzzy(t *testing.T) {
 	}
 }
 
+func TestFilterByEpic(t *testing.T) {
+	issues := []Issue{
+		{ID: "mg-007", Title: "Auth epic", IssueType: TypeEpic},
+		{ID: "mg-007.1", Title: "Login flow", IssueType: TypeTask},
+		{ID: "mg-007.2", Title: "Signup flow", IssueType: TypeTask},
+		{ID: "mg-007.2.1", Title: "Email validation", IssueType: TypeTask},
+		{ID: "mg-008", Title: "Unrelated issue", IssueType: TypeTask},
+		{ID: "mg-0070", Title: "False prefix match", IssueType: TypeTask},
+	}
+
+	tests := []struct {
+		name     string
+		epicID   string
+		expected []string
+	}{
+		{
+			name:     "Empty epicID returns all",
+			epicID:   "",
+			expected: []string{"mg-007", "mg-007.1", "mg-007.2", "mg-007.2.1", "mg-008", "mg-0070"},
+		},
+		{
+			name:     "Exact match plus descendants",
+			epicID:   "mg-007",
+			expected: []string{"mg-007", "mg-007.1", "mg-007.2", "mg-007.2.1"},
+		},
+		{
+			name:     "No false prefix match",
+			epicID:   "mg-007",
+			expected: []string{"mg-007", "mg-007.1", "mg-007.2", "mg-007.2.1"},
+		},
+		{
+			name:     "Subtree filter",
+			epicID:   "mg-007.2",
+			expected: []string{"mg-007.2", "mg-007.2.1"},
+		},
+		{
+			name:     "No match",
+			epicID:   "mg-999",
+			expected: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := FilterByEpic(issues, tt.epicID)
+			if len(result) != len(tt.expected) {
+				t.Fatalf("expected %d results, got %d", len(tt.expected), len(result))
+			}
+			resMap := make(map[string]bool)
+			for _, r := range result {
+				resMap[r.ID] = true
+			}
+			for _, exp := range tt.expected {
+				if !resMap[exp] {
+					t.Errorf("expected issue %s to be in result", exp)
+				}
+			}
+		})
+	}
+}
+
 func TestIsStructuredToken(t *testing.T) {
 	tests := []struct {
 		token    string

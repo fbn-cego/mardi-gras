@@ -20,6 +20,7 @@ type Header struct {
 	ProblemCount     int
 	BeadOffset       int    // shimmer animation offset, incremented by tick
 	CurrentIssueID   string // active issue from bd show --current
+	EpicFilter       string // non-empty when filtering by epic
 }
 
 // View renders the header.
@@ -90,6 +91,12 @@ func (h Header) View() string {
 		problemInfo = warnStyle.Render(fmt.Sprintf(" %s%d", ui.SymWarning, h.ProblemCount))
 	}
 
+	epicInfo := ""
+	if h.EpicFilter != "" {
+		epicStyle := lipgloss.NewStyle().Foreground(ui.ColorEpic).Bold(true)
+		epicInfo = epicStyle.Render(fmt.Sprintf(" epic:%s", h.EpicFilter))
+	}
+
 	bar := h.renderProgressBar(total, len(h.Groups[data.ParadePastTheStand]), 20)
 
 	titleLine := lipgloss.JoinHorizontal(
@@ -100,6 +107,7 @@ func (h Header) View() string {
 		agentInfo,
 		gasTownInfo,
 		problemInfo,
+		epicInfo,
 		"  ",
 		bar,
 	)
