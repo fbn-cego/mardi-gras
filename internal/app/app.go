@@ -485,6 +485,23 @@ type worktreeErrorMsg struct {
 	err     error
 }
 
+// worktreeRemovedMsg is sent when a worktree is successfully removed.
+type worktreeRemovedMsg struct {
+	issueID string
+}
+
+// worktreeRemoveErrorMsg is sent when worktree removal fails.
+type worktreeRemoveErrorMsg struct {
+	issueID string
+	err     error
+}
+
+// worktreesPrunedMsg is sent when batch prune completes.
+type worktreesPrunedMsg struct {
+	count int
+	err   error
+}
+
 // changeIndicatorExpiredMsg clears change indicators after timeout.
 type changeIndicatorExpiredMsg struct{}
 
@@ -1409,6 +1426,48 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.toast = toast
 		return m, dismissCmd
 
+	case worktreeRemovedMsg:
+		toast, dismissCmd := components.ShowToast(
+			fmt.Sprintf("Worktree removed for %s", msg.issueID),
+			components.ToastSuccess,
+			3*time.Second,
+		)
+		m.toast = toast
+		m.lastFileMod = time.Time{}
+		return m, tea.Batch(dismissCmd, m.startPollImmediate())
+
+	case worktreeRemoveErrorMsg:
+		toast, dismissCmd := components.ShowToast(
+			fmt.Sprintf("Remove worktree: %s", msg.err),
+			components.ToastError,
+			5*time.Second,
+		)
+		m.toast = toast
+		return m, dismissCmd
+
+	case worktreesPrunedMsg:
+		var text string
+		if msg.err != nil {
+			text = fmt.Sprintf("Prune error: %s", msg.err)
+		} else if msg.count == 0 {
+			text = "No stale worktrees found"
+		} else {
+			text = fmt.Sprintf("Pruned %d stale worktree(s)", msg.count)
+		}
+		level := components.ToastSuccess
+		if msg.err != nil {
+			level = components.ToastError
+		} else if msg.count == 0 {
+			level = components.ToastInfo
+		}
+		toast, dismissCmd := components.ShowToast(text, level, 3*time.Second)
+		m.toast = toast
+		if msg.count > 0 {
+			m.lastFileMod = time.Time{}
+			return m, tea.Batch(dismissCmd, m.startPollImmediate())
+		}
+		return m, dismissCmd
+
 	case confettiTickMsg:
 		m.confetti.Update()
 		if m.confetti.Active() {
@@ -1687,6 +1746,8 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.createAndSwitchBranch()
 	case "W":
 		return m.createWorktree()
+	case "D":
+		return m.removeWorktree()
 
 	case "a":
 		// Multi-sling with Gas Town
@@ -2169,6 +2230,37 @@ func (m Model) createWorktree() (tea.Model, tea.Cmd) {
 	}
 }
 
+// removeWorktree removes the git worktree for the selected issue.
+func (m Model) removeWorktree() (tea.Model, tea.Cmd) {
+	issue := m.parade.SelectedIssue
+	if issue == nil {
+		return m, nil
+	}
+	if data.WorktreePath(*issue) == "" {
+		toast, dismissCmd := components.ShowToast("No worktree to remove", components.ToastInfo, 3*time.Second)
+		m.toast = toast
+		return m, dismissCmd
+	}
+	issueCopy := *issue
+	projectDir := m.projectDir
+	return m, func() tea.Msg {
+		if err := data.RemoveWorktree(issueCopy, projectDir); err != nil {
+			return worktreeRemoveErrorMsg{issueID: issueCopy.ID, err: err}
+		}
+		return worktreeRemovedMsg{issueID: issueCopy.ID}
+	}
+}
+
+// pruneStaleWorktrees runs batch cleanup of stale worktree metadata.
+func (m Model) pruneStaleWorktrees() (tea.Model, tea.Cmd) {
+	issues := m.parade.AllIssues
+	projectDir := m.projectDir
+	return m, func() tea.Msg {
+		count, err := data.PruneStaleWorktrees(issues, projectDir)
+		return worktreesPrunedMsg{count: count, err: err}
+	}
+}
+
 // openEpicPicker opens the palette populated with all epics from the current dataset.
 func (m Model) openEpicPicker() (tea.Model, tea.Cmd) {
 	var cmds []components.PaletteCommand
@@ -2203,6 +2295,8 @@ func (m Model) buildPaletteCommands() []components.PaletteCommand {
 		{Name: "Copy branch name", Desc: "Copy git branch to clipboard", Key: "b", Action: components.ActionCopyBranch},
 		{Name: "Create git branch", Desc: "Checkout new branch for issue", Key: "B", Action: components.ActionCreateBranch},
 		{Name: "Create worktree", Desc: "Create git worktree for issue", Key: "W", Action: components.ActionCreateWorktree},
+		{Name: "Remove worktree", Desc: "Remove git worktree for issue", Key: "D", Action: components.ActionRemoveWorktree},
+		{Name: "Prune stale worktrees", Desc: "Clean up orphaned worktree metadata", Key: "", Action: components.ActionPruneWorktrees},
 		{Name: "New issue", Desc: "Create a new beads issue", Key: "N", Action: components.ActionNewIssue},
 		{Name: "Toggle focus mode", Desc: "Show only my work + top priority", Key: "f", Action: components.ActionToggleFocus},
 		{Name: "Toggle closed issues", Desc: "Show/hide past the stand", Key: "c", Action: components.ActionToggleClosed},
@@ -2261,6 +2355,10 @@ func (m Model) executePaletteAction(action components.PaletteAction) (tea.Model,
 		return m.createAndSwitchBranch()
 	case components.ActionCreateWorktree:
 		return m.createWorktree()
+	case components.ActionRemoveWorktree:
+		return m.removeWorktree()
+	case components.ActionPruneWorktrees:
+		return m.pruneStaleWorktrees()
 	case components.ActionNewIssue:
 		m.creating = true
 		m.createForm = components.NewCreateForm(m.width, m.height)

@@ -42,6 +42,8 @@ const (
 	ActionRecoverRigs
 	ActionFilterByEpic
 	ActionCreateWorktree
+	ActionRemoveWorktree
+	ActionPruneWorktrees
 )
 
 // PaletteCommand is a single entry in the command palette.
