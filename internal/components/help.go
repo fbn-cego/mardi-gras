@@ -101,6 +101,7 @@ func allSections() []helpSection {
 				{key: "b", desc: "Copy branch name to clipboard"},
 				{key: "B", desc: "Create + checkout git branch"},
 				{key: "W", desc: "Create git worktree for issue"},
+				{key: "D", desc: "Remove git worktree for issue"},
 				{key: "N", desc: "Create new issue"},
 			},
 		},
