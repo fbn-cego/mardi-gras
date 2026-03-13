@@ -85,6 +85,28 @@ func TestCreateWorktreePathComputation(t *testing.T) {
 	}
 }
 
+func TestPruneStaleWorktreesNoneStale(t *testing.T) {
+	issues := []Issue{
+		{ID: "bd-1", Metadata: nil},
+		{ID: "bd-2", Metadata: map[string]interface{}{}},
+	}
+	count, err := PruneStaleWorktrees(issues, "/tmp/fake-project")
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 pruned, got %d", count)
+	}
+}
+
+func TestRemoveWorktreeNoMetadata(t *testing.T) {
+	issue := Issue{ID: "bd-test", Metadata: nil}
+	err := RemoveWorktree(issue, "/tmp/fake-project")
+	if err == nil {
+		t.Error("expected error for issue with no worktree metadata")
+	}
+}
+
 func TestWorktreePath(t *testing.T) {
 	tests := []struct {
 		name     string

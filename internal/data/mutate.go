@@ -161,3 +161,73 @@ func setWorktreeMetadata(issueID, absPath string) error {
 	return execWithTimeout(timeoutShort, "bd", "update", issueID,
 		"--set-metadata", "worktree="+absPath)
 }
+
+// unsetWorktreeMetadata removes the worktree key from an issue's metadata.
+func unsetWorktreeMetadata(issueID string) error {
+	return execWithTimeout(timeoutShort, "bd", "update", issueID,
+		"--unset-metadata", "worktree")
+}
+
+// RemoveWorktree removes the git worktree for an issue and clears its metadata.
+// If the worktree directory is already gone, it skips git removal and just cleans metadata.
+func RemoveWorktree(issue Issue, projectDir string) error {
+	wtPath := WorktreePath(issue)
+	if wtPath == "" {
+		return fmt.Errorf("no worktree set for %s", issue.ID)
+	}
+
+	// If directory still exists, remove via git
+	if _, err := os.Stat(wtPath); err == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), timeoutShort)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "git", "worktree", "remove", wtPath, "--force")
+		cmd.Dir = projectDir
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("git worktree remove: %w", err)
+		}
+	}
+
+	// Prune stale worktree entries
+	_ = execWithTimeout(timeoutShort, "git", "-C", projectDir, "worktree", "prune")
+
+	// Clear metadata on the bead
+	if err := unsetWorktreeMetadata(issue.ID); err != nil {
+		return fmt.Errorf("unset worktree metadata: %w", err)
+	}
+
+	return nil
+}
+
+// PruneStaleWorktrees finds issues with worktree metadata pointing to missing directories
+// and clears their metadata. Runs git worktree prune once at the end. Returns the count
+// of successfully pruned entries.
+func PruneStaleWorktrees(issues []Issue, projectDir string) (int, error) {
+	var pruned int
+	var firstErr error
+
+	for i := range issues {
+		wtPath := WorktreePath(issues[i])
+		if wtPath == "" {
+			continue
+		}
+		// Only prune if directory is missing
+		if _, err := os.Stat(wtPath); err == nil {
+			continue // directory exists, not stale
+		}
+		// Directory gone — clear metadata
+		if err := unsetWorktreeMetadata(issues[i].ID); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		pruned++
+	}
+
+	// Single prune pass at the end
+	if pruned > 0 {
+		_ = execWithTimeout(timeoutShort, "git", "-C", projectDir, "worktree", "prune")
+	}
+
+	return pruned, firstErr
+}
