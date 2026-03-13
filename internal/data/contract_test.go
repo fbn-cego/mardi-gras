@@ -99,6 +99,7 @@ const bdListEpicWithChildren = `[
 		"priority": 2,
 		"issue_type": "task",
 		"owner": "dev@example.com",
+		"parent": "proj-100",
 		"created_at": "2026-03-02T09:00:00-06:00",
 		"created_by": "lead",
 		"updated_at": "2026-03-04T10:00:00-06:00"
@@ -110,6 +111,7 @@ const bdListEpicWithChildren = `[
 		"priority": 2,
 		"issue_type": "task",
 		"owner": "dev@example.com",
+		"parent": "proj-100",
 		"created_at": "2026-03-02T09:00:00-06:00",
 		"created_by": "lead",
 		"updated_at": "2026-03-02T09:00:00-06:00"
@@ -121,6 +123,7 @@ const bdListEpicWithChildren = `[
 		"priority": 3,
 		"issue_type": "task",
 		"owner": "dev@example.com",
+		"parent": "proj-100.2",
 		"created_at": "2026-03-02T10:00:00-06:00",
 		"created_by": "lead",
 		"updated_at": "2026-03-02T10:00:00-06:00"
@@ -329,15 +332,18 @@ func TestContractEpicWithChildren(t *testing.T) {
 
 	child1 := issues[1]
 	assertEqual(t, "child1.ID", child1.ID, "proj-100.1")
+	assertEqual(t, "child1.Parent", child1.Parent, "proj-100")
 	assertEqual(t, "child1.ParentID", child1.ParentID(), "proj-100")
 	assertIntEqual(t, "child1.NestingDepth", child1.NestingDepth(), 1)
 
 	child2 := issues[2]
 	assertEqual(t, "child2.ID", child2.ID, "proj-100.2")
+	assertEqual(t, "child2.Parent", child2.Parent, "proj-100")
 	assertEqual(t, "child2.ParentID", child2.ParentID(), "proj-100")
 
 	grandchild := issues[3]
 	assertEqual(t, "grandchild.ID", grandchild.ID, "proj-100.2.1")
+	assertEqual(t, "grandchild.Parent", grandchild.Parent, "proj-100.2")
 	assertEqual(t, "grandchild.ParentID", grandchild.ParentID(), "proj-100.2")
 	assertIntEqual(t, "grandchild.NestingDepth", grandchild.NestingDepth(), 2)
 }

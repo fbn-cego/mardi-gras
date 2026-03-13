@@ -135,15 +135,39 @@ func fuzzyFilter(issues []Issue, query string) []Issue {
 }
 
 // FilterByEpic returns only the epic itself and all its descendants (any depth).
-// If epicID is empty, all issues are returned unchanged.
+// It matches children by both dot-separated ID prefix (mg-007.1) and the
+// explicit Parent field from bd's JSON output. If epicID is empty, all issues
+// are returned unchanged.
 func FilterByEpic(issues []Issue, epicID string) []Issue {
 	if epicID == "" {
 		return issues
 	}
 	prefix := epicID + "."
+
+	// Collect matching IDs: start with ID prefix matching, then walk Parent links.
+	included := make(map[string]bool)
+	included[epicID] = true
+	for _, issue := range issues {
+		if strings.HasPrefix(issue.ID, prefix) {
+			included[issue.ID] = true
+		}
+	}
+
+	// Walk Parent field to find children not captured by ID prefix.
+	// Iterate until stable (handles multi-level parent chains).
+	for changed := true; changed; {
+		changed = false
+		for _, issue := range issues {
+			if !included[issue.ID] && issue.Parent != "" && included[issue.Parent] {
+				included[issue.ID] = true
+				changed = true
+			}
+		}
+	}
+
 	var result []Issue
 	for _, issue := range issues {
-		if issue.ID == epicID || strings.HasPrefix(issue.ID, prefix) {
+		if included[issue.ID] {
 			result = append(result, issue)
 		}
 	}

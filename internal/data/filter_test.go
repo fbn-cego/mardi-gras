@@ -182,6 +182,51 @@ func TestFilterByEpic(t *testing.T) {
 	}
 }
 
+func TestFilterByEpicParentField(t *testing.T) {
+	issues := []Issue{
+		{ID: "mg-007", Title: "Auth epic", IssueType: TypeEpic},
+		{ID: "mg-007.1", Title: "Login flow (dot ID)", IssueType: TypeTask, Parent: "mg-007"},
+		{ID: "mg-abc", Title: "Child via parent field", IssueType: TypeTask, Parent: "mg-007"},
+		{ID: "mg-def", Title: "Grandchild via parent field", IssueType: TypeTask, Parent: "mg-abc"},
+		{ID: "mg-008", Title: "Unrelated issue", IssueType: TypeTask},
+	}
+
+	tests := []struct {
+		name     string
+		epicID   string
+		expected []string
+	}{
+		{
+			name:     "Parent field children included",
+			epicID:   "mg-007",
+			expected: []string{"mg-007", "mg-007.1", "mg-abc", "mg-def"},
+		},
+		{
+			name:     "Subtree via parent field",
+			epicID:   "mg-abc",
+			expected: []string{"mg-abc", "mg-def"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := FilterByEpic(issues, tt.epicID)
+			if len(result) != len(tt.expected) {
+				t.Fatalf("expected %d results, got %d: %v", len(tt.expected), len(result), result)
+			}
+			resMap := make(map[string]bool)
+			for _, r := range result {
+				resMap[r.ID] = true
+			}
+			for _, exp := range tt.expected {
+				if !resMap[exp] {
+					t.Errorf("expected issue %s to be in result", exp)
+				}
+			}
+		})
+	}
+}
+
 func TestIsStructuredToken(t *testing.T) {
 	tests := []struct {
 		token    string

@@ -109,6 +109,7 @@ type Issue struct {
 	Labels             []string               `json:"labels,omitempty"`
 	DueAt              *time.Time             `json:"due_at,omitempty"`
 	DeferUntil         *time.Time             `json:"defer_until,omitempty"`
+	Parent             string                 `json:"parent,omitempty"`
 	Metadata           map[string]interface{} `json:"metadata,omitempty"`
 
 	// HOP (Hierarchy of Proof) — agent reputation and quality tracking.
@@ -261,9 +262,13 @@ func PriorityName(p Priority) string {
 	}
 }
 
-// ParentID returns the parent issue ID based on dot-separated hierarchy.
+// ParentID returns the parent issue ID. It prefers the explicit Parent field
+// from bd's JSON output, falling back to dot-separated hierarchy parsing.
 // "mg-007.2.1" → "mg-007.2", "mg-007" → "".
 func (i *Issue) ParentID() string {
+	if i.Parent != "" {
+		return i.Parent
+	}
 	idx := strings.LastIndex(i.ID, ".")
 	if idx < 0 {
 		return ""
