@@ -1,6 +1,9 @@
 package data
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 func TestBranchName(t *testing.T) {
 	tests := []struct {
@@ -65,6 +68,20 @@ func TestSlugify(t *testing.T) {
 				t.Errorf("slugify(%q) = %q, want %q", tt.input, got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestCreateWorktreePathComputation(t *testing.T) {
+	issue := Issue{ID: "bd-a1b2", Title: "Fix login", IssueType: TypeBug}
+	branch := BranchName(issue)
+	projectDir := "/home/user/work/my-project"
+
+	expectedBase := "/home/user/work/my-project-worktrees"
+	expectedPath := expectedBase + "/" + branch
+
+	got := filepath.Join(filepath.Dir(projectDir), filepath.Base(projectDir)+"-worktrees", branch)
+	if got != expectedPath {
+		t.Errorf("worktree path = %q, want %q", got, expectedPath)
 	}
 }
 
