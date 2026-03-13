@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"time"
 
@@ -1639,20 +1640,36 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// Resolve working directory: prefer worktree if set and valid
+		cwd := m.projectDir
+		if wt := data.WorktreePath(*issue); wt != "" {
+			if info, statErr := os.Stat(wt); statErr == nil && info.IsDir() {
+				cwd = wt
+			} else {
+				toast, dismissCmd := components.ShowToast(
+					"Worktree missing, using project root",
+					components.ToastWarn,
+					3*time.Second,
+				)
+				m.toast = toast
+				_ = dismissCmd // dismiss handled by next update cycle
+			}
+		}
+
 		deps := issue.EvaluateDependencies(m.detail.IssueMap, m.blockingTypes)
 		prompt := agent.BuildPrompt(*issue, deps, m.detail.IssueMap)
 
 		if m.inTmux {
 			issueID := issue.ID
 			return m, func() tea.Msg {
-				winName, err := agent.LaunchInTmux(prompt, m.projectDir, issueID)
+				winName, err := agent.LaunchInTmux(prompt, cwd, issueID)
 				if err != nil {
 					return agentLaunchErrorMsg{issueID: issueID, err: err}
 				}
 				return agentLaunchedMsg{issueID: issueID, windowName: winName}
 			}
 		}
-		c := agent.Command(prompt, m.projectDir)
+		c := agent.Command(prompt, cwd)
 		return m, tea.ExecProcess(c, func(err error) tea.Msg {
 			return agentFinishedMsg{err: err}
 		})
