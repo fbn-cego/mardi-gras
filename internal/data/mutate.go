@@ -1,7 +1,11 @@
 package data
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -98,4 +102,62 @@ func WorktreePath(issue Issue) string {
 		return ""
 	}
 	return s
+}
+
+// CreateWorktree creates a git worktree for the given issue and stores
+// the worktree path in the issue's metadata. Returns the absolute worktree path.
+func CreateWorktree(issue Issue, projectDir string) (string, error) {
+	// Check if worktree already tracked in metadata
+	if wt := WorktreePath(issue); wt != "" {
+		return "", fmt.Errorf("worktree already exists: %s", wt)
+	}
+
+	branch := BranchName(issue)
+	baseDir := filepath.Join(filepath.Dir(projectDir), filepath.Base(projectDir)+"-worktrees")
+	wtPath := filepath.Join(baseDir, branch)
+	absPath, err := filepath.Abs(wtPath)
+	if err != nil {
+		return "", fmt.Errorf("resolve worktree path: %w", err)
+	}
+
+	// Partial failure recovery: dir exists but metadata wasn't set
+	if info, statErr := os.Stat(absPath); statErr == nil && info.IsDir() {
+		if metaErr := setWorktreeMetadata(issue.ID, absPath); metaErr != nil {
+			return "", fmt.Errorf("set worktree metadata: %w", metaErr)
+		}
+		return absPath, nil
+	}
+
+	// Ensure parent directories exist (branch names contain slashes like feat/...)
+	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+		return "", fmt.Errorf("create worktree directory: %w", err)
+	}
+
+	// Try creating with new branch first
+	ctx, cancel := context.WithTimeout(context.Background(), timeoutShort)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "worktree", "add", absPath, "-b", branch)
+	cmd.Dir = projectDir
+	if err := cmd.Run(); err != nil {
+		// Branch may already exist — retry without -b
+		ctx2, cancel2 := context.WithTimeout(context.Background(), timeoutShort)
+		defer cancel2()
+		cmd2 := exec.CommandContext(ctx2, "git", "worktree", "add", absPath, branch)
+		cmd2.Dir = projectDir
+		if err2 := cmd2.Run(); err2 != nil {
+			return "", fmt.Errorf("git worktree add: %w", err2)
+		}
+	}
+
+	// Store worktree path on the bead
+	if metaErr := setWorktreeMetadata(issue.ID, absPath); metaErr != nil {
+		return "", fmt.Errorf("worktree created at %s but metadata update failed: %w", absPath, metaErr)
+	}
+
+	return absPath, nil
+}
+
+func setWorktreeMetadata(issueID, absPath string) error {
+	return execWithTimeout(timeoutShort, "bd", "update", issueID,
+		"--set-metadata", "worktree="+absPath)
 }
