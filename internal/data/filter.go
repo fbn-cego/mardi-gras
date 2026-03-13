@@ -134,6 +134,22 @@ func fuzzyFilter(issues []Issue, query string) []Issue {
 	return result
 }
 
+// FilterByEpic returns only the epic itself and all its descendants (any depth).
+// If epicID is empty, all issues are returned unchanged.
+func FilterByEpic(issues []Issue, epicID string) []Issue {
+	if epicID == "" {
+		return issues
+	}
+	prefix := epicID + "."
+	var result []Issue
+	for _, issue := range issues {
+		if issue.ID == epicID || strings.HasPrefix(issue.ID, prefix) {
+			result = append(result, issue)
+		}
+	}
+	return result
+}
+
 // FilterIssuesWithHighlights returns filtered issues plus a map of issue ID → matched
 // character indices in the "ID + Title" search string. Used for rendering highlights.
 func FilterIssuesWithHighlights(issues []Issue, query string) (result []Issue, matchMap map[string][]int) {

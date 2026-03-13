@@ -40,6 +40,7 @@ const (
 	ActionCascadeClose
 	ActionCycleLayout
 	ActionRecoverRigs
+	ActionFilterByEpic
 )
 
 // PaletteCommand is a single entry in the command palette.

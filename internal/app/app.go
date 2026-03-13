@@ -89,6 +89,10 @@ type Model struct {
 	// Focus mode
 	focusMode bool
 
+	// Epic filter
+	epicFilter  string // selected epic ID, empty = no filter
+	epicPicking bool   // whether the epic picker overlay is open
+
 	// Issue creation form
 	creating   bool
 	createForm components.CreateForm
@@ -541,6 +545,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return slingResultMsg{issueID: issueID, formula: formula, err: err}
 			}
 		}
+		if m.epicPicking {
+			m.epicPicking = false
+			if !result.Cancelled {
+				selected := m.palette.SelectedName()
+				if selected == "" {
+					// "Clear epic filter" entry
+					m.epicFilter = ""
+				} else {
+					m.epicFilter = selected
+				}
+				m.rebuildParade()
+				if m.epicFilter != "" {
+					toast, cmd := components.ShowToast("Epic filter: "+m.epicFilter, components.ToastInfo, toastDuration)
+					m.toast = toast
+					return m, cmd
+				}
+				toast, cmd := components.ShowToast("Epic filter cleared", components.ToastInfo, toastDuration)
+				m.toast = toast
+				return m, cmd
+			}
+			return m, nil
+		}
 		if !result.Cancelled {
 			return m.executePaletteAction(result.Action)
 		}
@@ -767,6 +793,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.LastMod.IsZero() {
 			m.lastFileMod = msg.LastMod
 		}
+
+		// Auto-clear epic filter if the epic no longer exists
+		if m.epicFilter != "" {
+			found := false
+			for _, iss := range msg.Issues {
+				if iss.ID == m.epicFilter {
+					found = true
+					break
+				}
+			}
+			if !found {
+				m.epicFilter = ""
+				toast, toastCmd := components.ShowToast(
+					"Epic filter cleared \u2014 epic no longer exists",
+					components.ToastWarn, toastDuration,
+				)
+				m.toast = toast
+				cmds = append(cmds, toastCmd)
+			}
+		}
+
 		m.rebuildParade()
 		m.recomputeVelocity()
 		return m, tea.Batch(cmds...)
@@ -1474,6 +1521,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.toast = toast
 		return m, cmd
 
+	case "e":
+		return m.openEpicPicker()
+
 	case "ctrl+g":
 		if !m.gtEnv.Available {
 			return m, nil
@@ -1974,6 +2024,27 @@ func createBranchCmd(ctx context.Context, projectDir, branch string) *exec.Cmd {
 	return cmd
 }
 
+// openEpicPicker opens the palette populated with all epics from the current dataset.
+func (m Model) openEpicPicker() (tea.Model, tea.Cmd) {
+	var cmds []components.PaletteCommand
+	if m.epicFilter != "" {
+		cmds = append(cmds, components.PaletteCommand{
+			Name: "", Desc: "Clear epic filter", Action: components.ActionFilterByEpic,
+		})
+	}
+	for _, issue := range m.issues {
+		if issue.IssueType == data.TypeEpic {
+			cmds = append(cmds, components.PaletteCommand{
+				Name: issue.ID, Desc: issue.Title, Action: components.ActionFilterByEpic,
+			})
+		}
+	}
+	m.epicPicking = true
+	m.showPalette = true
+	m.palette = components.NewPalette(m.width, m.height, cmds)
+	return m, m.palette.Init()
+}
+
 // buildPaletteCommands returns the context-aware list of palette commands.
 func (m Model) buildPaletteCommands() []components.PaletteCommand {
 	cmds := []components.PaletteCommand{
@@ -1990,6 +2061,7 @@ func (m Model) buildPaletteCommands() []components.PaletteCommand {
 		{Name: "Toggle focus mode", Desc: "Show only my work + top priority", Key: "f", Action: components.ActionToggleFocus},
 		{Name: "Toggle closed issues", Desc: "Show/hide past the stand", Key: "c", Action: components.ActionToggleClosed},
 		{Name: "Filter", Desc: "Fuzzy filter the parade list", Key: "/", Action: components.ActionFilter},
+		{Name: "Filter by epic", Desc: "Show only issues under a specific epic", Key: "e", Action: components.ActionFilterByEpic},
 		{Name: "Help", Desc: "Show keybinding help", Key: "?", Action: components.ActionHelp},
 		{Name: "Quit", Desc: "Exit Mardi Gras", Key: "q", Action: components.ActionQuit},
 		{Name: "Cycle layout", Desc: "Switch panel arrangement", Key: "", Action: components.ActionCycleLayout},
@@ -2063,6 +2135,8 @@ func (m Model) executePaletteAction(action components.PaletteAction) (tea.Model,
 		m.filtering = true
 		m.filterInput.Focus()
 		return m, textinput.Blink
+	case components.ActionFilterByEpic:
+		return m.openEpicPicker()
 	case components.ActionLaunchAgent:
 		return m.handleKey(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	case components.ActionKillAgent:
@@ -2465,14 +2539,15 @@ func (m *Model) rebuildParade() {
 		bodyH = m.height - 4
 	}
 
-	filteredIssues, highlights := data.FilterIssuesWithHighlights(m.issues, m.filterInput.Value())
+	epicIssues := data.FilterByEpic(m.issues, m.epicFilter)
+	filteredIssues, highlights := data.FilterIssuesWithHighlights(epicIssues, m.filterInput.Value())
 	if m.focusMode {
 		filteredIssues = data.FocusFilter(filteredIssues, m.blockingTypes)
 	}
 	groups := m.groups
 	detailIssueMap := m.issueMap()
 	paradeIssueMap := detailIssueMap
-	if m.filterInput.Value() != "" || m.focusMode {
+	if m.filterInput.Value() != "" || m.focusMode || m.epicFilter != "" {
 		filteredMap := data.BuildIssueMap(filteredIssues)
 		groups = data.GroupByParade(filteredIssues, m.blockingTypes, filteredMap)
 		paradeIssueMap = filteredMap
@@ -2487,6 +2562,7 @@ func (m *Model) rebuildParade() {
 		ProblemCount:     len(m.allProblems()),
 		BeadOffset:       m.beadOffset,
 		CurrentIssueID:   m.currentIssueID,
+		EpicFilter:       m.epicFilter,
 	}
 
 	m.parade = views.NewParadeWithData(filteredIssues, groups, paradeIssueMap, paradeW, bodyH, m.blockingTypes)
