@@ -3,6 +3,7 @@ package views
 import (
 	"fmt"
 	"image/color"
+	"os"
 	"strings"
 	"time"
 
@@ -457,6 +458,18 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 		}
 	}
 
+	// Worktree indicator
+	worktreePrefix := ""
+	worktreeWidth := 0
+	if wt := data.WorktreePath(*issue); wt != "" {
+		wtColor := ui.BrightGreen
+		if _, err := os.Stat(wt); err != nil {
+			wtColor = ui.Muted // stale/missing worktree
+		}
+		worktreePrefix = lipgloss.NewStyle().Foreground(wtColor).Render(ui.SymWorktree) + " "
+		worktreeWidth = 2
+	}
+
 	// Hierarchical indent based on dot-separated ID depth
 	depth := issue.NestingDepth()
 	indent := strings.Repeat("  ", depth)
@@ -510,7 +523,7 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 	innerWidth := p.Width - 4 // │ + space + content + space + │
 
 	// First, constrain the hint length if the terminal is very narrow
-	maxHint := innerWidth - 16 - agentWidth - indentWidth - dueWidth - deferWidth - orphanWidth - standstillWidth
+	maxHint := innerWidth - 16 - agentWidth - indentWidth - dueWidth - deferWidth - orphanWidth - standstillWidth - worktreeWidth
 	if maxHint < 0 {
 		maxHint = 0
 	}
@@ -527,7 +540,7 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 	}
 
 	hintLen := lipgloss.Width(hint)
-	maxTitle := innerWidth - 16 - hintLen - agentWidth - changeWidth - selectWidth - indentWidth - dueWidth - deferWidth - qualityWidth - orphanWidth - standstillWidth
+	maxTitle := innerWidth - 16 - hintLen - agentWidth - changeWidth - selectWidth - indentWidth - dueWidth - deferWidth - qualityWidth - orphanWidth - standstillWidth - worktreeWidth
 	if maxTitle < 0 {
 		maxTitle = 0
 	}
@@ -550,7 +563,7 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 	agePct := min(ageDays*100/30, 100) // 30 days = fully stale
 	idStyle := ui.GradientHeat.At(agePct)
 
-	line := fmt.Sprintf("%s%s %s%s%s%s%s%s %s %s",
+	line := fmt.Sprintf("%s%s %s%s%s%s%s%s%s %s %s",
 		indent,
 		symStyle.Render(sym),
 		selectPrefix,
@@ -558,6 +571,7 @@ func (p *Parade) renderIssue(item ParadeItem, selected bool, distFromCursor int)
 		orphanPrefix,
 		standstillPrefix,
 		agentPrefix,
+		worktreePrefix,
 		idStyle.Render(issue.ID),
 		renderedTitle,
 		prioStyle.Render(prio),
