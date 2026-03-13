@@ -82,3 +82,20 @@ func slugify(s string) string {
 	}
 	return result
 }
+
+// WorktreePath returns the worktree path stored in an issue's metadata.
+// Returns "" if not set or not a string.
+func WorktreePath(issue Issue) string {
+	if issue.Metadata == nil {
+		return ""
+	}
+	v, ok := issue.Metadata["worktree"]
+	if !ok {
+		return ""
+	}
+	s, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return s
+}

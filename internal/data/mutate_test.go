@@ -67,3 +67,40 @@ func TestSlugify(t *testing.T) {
 		})
 	}
 }
+
+func TestWorktreePath(t *testing.T) {
+	tests := []struct {
+		name     string
+		issue    Issue
+		expected string
+	}{
+		{
+			name:     "metadata has worktree string",
+			issue:    Issue{Metadata: map[string]interface{}{"worktree": "/tmp/worktrees/feat/bd-a1b2"}},
+			expected: "/tmp/worktrees/feat/bd-a1b2",
+		},
+		{
+			name:     "metadata nil",
+			issue:    Issue{},
+			expected: "",
+		},
+		{
+			name:     "metadata empty map",
+			issue:    Issue{Metadata: map[string]interface{}{}},
+			expected: "",
+		},
+		{
+			name:     "worktree key is not a string",
+			issue:    Issue{Metadata: map[string]interface{}{"worktree": 42}},
+			expected: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := WorktreePath(tt.issue)
+			if got != tt.expected {
+				t.Errorf("WorktreePath() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
