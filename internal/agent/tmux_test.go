@@ -38,33 +38,62 @@ func TestWindowName(t *testing.T) {
 	}
 }
 
-func TestParseAgentPanes(t *testing.T) {
-	output := "mg-bd-a1b2\t%5\n\t%0\nmg-bd-c3d4\t%8\n\t%1\n"
-	agents := parseAgentPanes(output)
+func TestTmuxSocketPath(t *testing.T) {
+	orig := os.Getenv("TMUX")
+	defer os.Setenv("TMUX", orig)
+
+	tests := []struct {
+		name string
+		tmux string
+		want string
+	}{
+		{"standard", "/tmp/tmux-1000/default,12345,0", "/tmp/tmux-1000/default"},
+		{"nested inner", "/tmp/tmux-1000/inner,67890,2", "/tmp/tmux-1000/inner"},
+		{"empty", "", ""},
+		{"no commas", "/tmp/tmux-1000/default", "/tmp/tmux-1000/default"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.tmux == "" {
+				os.Unsetenv("TMUX")
+			} else {
+				os.Setenv("TMUX", tt.tmux)
+			}
+			got := tmuxSocketPath()
+			if got != tt.want {
+				t.Errorf("tmuxSocketPath() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseAgentWindows(t *testing.T) {
+	output := "mg-bd-a1b2\t@5\n\t@0\nmg-bd-c3d4\t@8\n\t@1\n"
+	agents := parseAgentWindows(output)
 
 	if len(agents) != 2 {
-		t.Fatalf("expected 2 agent panes, got %d: %v", len(agents), agents)
+		t.Fatalf("expected 2 agent windows, got %d: %v", len(agents), agents)
 	}
 
-	if agents["bd-a1b2"] != "%5" {
+	if agents["bd-a1b2"] != "@5" {
 		t.Errorf("missing or wrong entry for bd-a1b2: %v", agents)
 	}
-	if agents["bd-c3d4"] != "%8" {
+	if agents["bd-c3d4"] != "@8" {
 		t.Errorf("missing or wrong entry for bd-c3d4: %v", agents)
 	}
 }
 
-func TestParseAgentPanesEmpty(t *testing.T) {
-	agents := parseAgentPanes("")
+func TestParseAgentWindowsEmpty(t *testing.T) {
+	agents := parseAgentWindows("")
 	if len(agents) != 0 {
-		t.Errorf("expected 0 agent panes from empty input, got %d", len(agents))
+		t.Errorf("expected 0 agent windows from empty input, got %d", len(agents))
 	}
 }
 
-func TestParseAgentPanesNoAgents(t *testing.T) {
-	output := "\t%0\n\t%1\n\t%2\n"
-	agents := parseAgentPanes(output)
+func TestParseAgentWindowsNoAgents(t *testing.T) {
+	output := "\t@0\n\t@1\n\t@2\n"
+	agents := parseAgentWindows(output)
 	if len(agents) != 0 {
-		t.Errorf("expected 0 agent panes, got %d: %v", len(agents), agents)
+		t.Errorf("expected 0 agent windows, got %d: %v", len(agents), agents)
 	}
 }
