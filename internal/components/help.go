@@ -100,6 +100,7 @@ func allSections() []helpSection {
 				{key: "$", desc: "Set priority: P4 (backlog)"},
 				{key: "b", desc: "Copy branch name to clipboard"},
 				{key: "B", desc: "Create + checkout git branch"},
+				{key: "W", desc: "Create git worktree for issue"},
 				{key: "N", desc: "Create new issue"},
 			},
 		},
