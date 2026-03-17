@@ -208,16 +208,24 @@ func CreateWorktree(issue Issue, projectDir, gitRepo string) (string, error) {
 	// Try creating with new branch first
 	ctx, cancel := context.WithTimeout(context.Background(), timeoutShort)
 	defer cancel()
+	var stderr strings.Builder
 	cmd := exec.CommandContext(ctx, "git", "worktree", "add", absPath, "-b", branch)
 	cmd.Dir = repoDir
+	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
 		// Branch may already exist — retry without -b
 		ctx2, cancel2 := context.WithTimeout(context.Background(), timeoutShort)
 		defer cancel2()
+		var stderr2 strings.Builder
 		cmd2 := exec.CommandContext(ctx2, "git", "worktree", "add", absPath, branch)
 		cmd2.Dir = repoDir
+		cmd2.Stderr = &stderr2
 		if err2 := cmd2.Run(); err2 != nil {
-			return "", fmt.Errorf("git worktree add: %w", err2)
+			detail := strings.TrimSpace(stderr2.String())
+			if detail == "" {
+				detail = strings.TrimSpace(stderr.String())
+			}
+			return "", fmt.Errorf("git worktree add (repo=%s, path=%s): %s", repoDir, absPath, detail)
 		}
 	}
 
