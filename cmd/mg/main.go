@@ -26,9 +26,17 @@ var version = "dev"
 func main() {
 	path := flag.String("path", "", "Path to .beads/issues.jsonl file")
 	blockTypesFlag := flag.String("block-types", "", "Comma-separated dependency types that count as blockers (default: blocks)")
+	noGastown := flag.Bool("no-gastown", false, "Disable Gas Town integration (fall back to default agent launch)")
 	statusMode := flag.Bool("status", false, "Output tmux status line and exit")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
+
+	// --no-gastown flag with MG_NO_GASTOWN env var fallback
+	if !*noGastown {
+		if v := os.Getenv("MG_NO_GASTOWN"); v == "1" || v == "true" {
+			*noGastown = true
+		}
+	}
 
 	if *showVersion {
 		fmt.Println("mg", version)
@@ -82,7 +90,7 @@ func main() {
 
 	// Run TUI
 	guard := app.NewOSCGuard()
-	model := app.NewWithGuard(issues, source, blockingTypes, guard)
+	model := app.NewWithGuard(issues, source, blockingTypes, guard, *noGastown)
 	p := tea.NewProgram(model, tea.WithFilter(guard.Filter()))
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

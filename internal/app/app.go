@@ -184,12 +184,13 @@ type Model struct {
 
 // New creates a new app model from loaded issues.
 func New(issues []data.Issue, source data.Source, blockingTypes map[string]bool) Model {
-	return NewWithGuard(issues, source, blockingTypes, nil)
+	return NewWithGuard(issues, source, blockingTypes, nil, false)
 }
 
 // NewWithGuard creates a new app model from loaded issues and attaches a
-// shared OSC guard when one is provided.
-func NewWithGuard(issues []data.Issue, source data.Source, blockingTypes map[string]bool, guard *OSCGuard) Model {
+// shared OSC guard when one is provided. When noGastown is true, Gas Town
+// integration is disabled even if gt is on PATH.
+func NewWithGuard(issues []data.Issue, source data.Source, blockingTypes map[string]bool, guard *OSCGuard, noGastown bool) Model {
 	groups := data.GroupByParade(issues, blockingTypes)
 
 	watchPath := source.Path
@@ -214,6 +215,10 @@ func NewWithGuard(issues []data.Issue, source data.Source, blockingTypes map[str
 	}
 
 	gtEnv := gastown.Detect()
+	if noGastown {
+		gtEnv.Available = false
+		gtEnv.Active = false
+	}
 	metaSchema := data.LoadMetadataSchema(projectDir)
 
 	return Model{
