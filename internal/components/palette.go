@@ -44,6 +44,7 @@ const (
 	ActionCreateWorktree
 	ActionRemoveWorktree
 	ActionPruneWorktrees
+	ActionRepoSelect
 )
 
 // PaletteCommand is a single entry in the command palette.
@@ -193,6 +194,14 @@ func (p *Palette) refilter() {
 func (p Palette) SelectedName() string {
 	if p.cursor >= 0 && p.cursor < len(p.filtered) {
 		return p.filtered[p.cursor].Name
+	}
+	return ""
+}
+
+// SelectedDesc returns the Desc of the currently highlighted command.
+func (p Palette) SelectedDesc() string {
+	if p.cursor >= 0 && p.cursor < len(p.filtered) {
+		return p.filtered[p.cursor].Desc
 	}
 	return ""
 }

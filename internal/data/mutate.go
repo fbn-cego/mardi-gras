@@ -87,6 +87,71 @@ func slugify(s string) string {
 	return result
 }
 
+// DiscoverRepos finds git repositories under projectDir.
+// If projectDir itself is a git repo, returns [projectDir].
+// Otherwise scans immediate children for .git/ directories.
+func DiscoverRepos(projectDir string) ([]string, error) {
+	// Check if projectDir itself is a git repo
+	gitDir := filepath.Join(projectDir, ".git")
+	if info, err := os.Stat(gitDir); err == nil && (info.IsDir() || info.Mode().IsRegular()) {
+		abs, _ := filepath.Abs(projectDir)
+		return []string{abs}, nil
+	}
+
+	entries, err := os.ReadDir(projectDir)
+	if err != nil {
+		return nil, fmt.Errorf("scan %s for repos: %w", projectDir, err)
+	}
+
+	var repos []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		child := filepath.Join(projectDir, entry.Name())
+		childGit := filepath.Join(child, ".git")
+		if info, err := os.Stat(childGit); err == nil && (info.IsDir() || info.Mode().IsRegular()) {
+			abs, _ := filepath.Abs(child)
+			repos = append(repos, abs)
+		}
+	}
+	return repos, nil
+}
+
+// GitRepoPath returns the git_repo metadata value for an issue.
+// Returns "" if not set or not a string.
+func GitRepoPath(issue Issue) string {
+	if issue.Metadata == nil {
+		return ""
+	}
+	v, ok := issue.Metadata["git_repo"]
+	if !ok {
+		return ""
+	}
+	s, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return s
+}
+
+// ResolveGitRepo returns the git repo to use for worktree operations on an issue.
+// Checks issue metadata first; falls back to projectDir.
+func ResolveGitRepo(issue Issue, projectDir string) string {
+	if repo := GitRepoPath(issue); repo != "" {
+		if info, err := os.Stat(repo); err == nil && info.IsDir() {
+			return repo
+		}
+	}
+	return projectDir
+}
+
+// SetGitRepoMetadata stores the git_repo path in an issue's metadata.
+func SetGitRepoMetadata(issueID, repoPath string) error {
+	return execWithTimeout(timeoutShort, "bd", "update", issueID,
+		"--set-metadata", "git_repo="+repoPath)
+}
+
 // WorktreePath returns the worktree path stored in an issue's metadata.
 // Returns "" if not set or not a string.
 func WorktreePath(issue Issue) string {
@@ -106,14 +171,21 @@ func WorktreePath(issue Issue) string {
 
 // CreateWorktree creates a git worktree for the given issue and stores
 // the worktree path in the issue's metadata. Returns the absolute worktree path.
-func CreateWorktree(issue Issue, projectDir string) (string, error) {
+// The gitRepo parameter is the git repository to create the worktree from;
+// pass "" to use projectDir directly (backward compat).
+func CreateWorktree(issue Issue, projectDir, gitRepo string) (string, error) {
 	// Check if worktree already tracked in metadata
 	if wt := WorktreePath(issue); wt != "" {
 		return "", fmt.Errorf("worktree already exists: %s", wt)
 	}
 
+	repoDir := gitRepo
+	if repoDir == "" {
+		repoDir = projectDir
+	}
+
 	branch := BranchName(issue)
-	baseDir := filepath.Join(filepath.Dir(projectDir), filepath.Base(projectDir)+"-worktrees")
+	baseDir := filepath.Join(filepath.Dir(repoDir), filepath.Base(repoDir)+"-worktrees")
 	wtPath := filepath.Join(baseDir, branch)
 	absPath, err := filepath.Abs(wtPath)
 	if err != nil {
@@ -137,13 +209,13 @@ func CreateWorktree(issue Issue, projectDir string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeoutShort)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", "worktree", "add", absPath, "-b", branch)
-	cmd.Dir = projectDir
+	cmd.Dir = repoDir
 	if err := cmd.Run(); err != nil {
 		// Branch may already exist — retry without -b
 		ctx2, cancel2 := context.WithTimeout(context.Background(), timeoutShort)
 		defer cancel2()
 		cmd2 := exec.CommandContext(ctx2, "git", "worktree", "add", absPath, branch)
-		cmd2.Dir = projectDir
+		cmd2.Dir = repoDir
 		if err2 := cmd2.Run(); err2 != nil {
 			return "", fmt.Errorf("git worktree add: %w", err2)
 		}
@@ -176,19 +248,21 @@ func RemoveWorktree(issue Issue, projectDir string) error {
 		return fmt.Errorf("no worktree set for %s", issue.ID)
 	}
 
+	repoDir := ResolveGitRepo(issue, projectDir)
+
 	// If directory still exists, remove via git
 	if _, err := os.Stat(wtPath); err == nil {
 		ctx, cancel := context.WithTimeout(context.Background(), timeoutShort)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, "git", "worktree", "remove", wtPath, "--force")
-		cmd.Dir = projectDir
+		cmd.Dir = repoDir
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("git worktree remove: %w", err)
 		}
 	}
 
 	// Prune stale worktree entries
-	_ = execWithTimeout(timeoutShort, "git", "-C", projectDir, "worktree", "prune")
+	_ = execWithTimeout(timeoutShort, "git", "-C", repoDir, "worktree", "prune")
 
 	// Clear metadata on the bead
 	if err := unsetWorktreeMetadata(issue.ID); err != nil {
@@ -199,11 +273,12 @@ func RemoveWorktree(issue Issue, projectDir string) error {
 }
 
 // PruneStaleWorktrees finds issues with worktree metadata pointing to missing directories
-// and clears their metadata. Runs git worktree prune once at the end. Returns the count
-// of successfully pruned entries.
+// and clears their metadata. Runs git worktree prune for each affected repo. Returns the
+// count of successfully pruned entries.
 func PruneStaleWorktrees(issues []Issue, projectDir string) (int, error) {
 	var pruned int
 	var firstErr error
+	repoDirs := map[string]bool{} // track repos that need pruning
 
 	for i := range issues {
 		wtPath := WorktreePath(issues[i])
@@ -214,6 +289,8 @@ func PruneStaleWorktrees(issues []Issue, projectDir string) (int, error) {
 		if _, err := os.Stat(wtPath); err == nil {
 			continue // directory exists, not stale
 		}
+		// Track which repo this worktree belonged to
+		repoDirs[ResolveGitRepo(issues[i], projectDir)] = true
 		// Directory gone — clear metadata
 		if err := unsetWorktreeMetadata(issues[i].ID); err != nil {
 			if firstErr == nil {
@@ -224,9 +301,9 @@ func PruneStaleWorktrees(issues []Issue, projectDir string) (int, error) {
 		pruned++
 	}
 
-	// Single prune pass at the end
-	if pruned > 0 {
-		_ = execWithTimeout(timeoutShort, "git", "-C", projectDir, "worktree", "prune")
+	// Prune each affected repo
+	for repoDir := range repoDirs {
+		_ = execWithTimeout(timeoutShort, "git", "-C", repoDir, "worktree", "prune")
 	}
 
 	return pruned, firstErr
