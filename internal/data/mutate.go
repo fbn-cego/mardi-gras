@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -87,9 +88,13 @@ func slugify(s string) string {
 	return result
 }
 
+// discoverMaxDepth is the maximum directory depth to scan for git repos.
+const discoverMaxDepth = 5
+
 // DiscoverRepos finds git repositories under projectDir.
 // If projectDir itself is a git repo, returns [projectDir].
-// Otherwise scans immediate children for .git/ directories.
+// Otherwise walks up to discoverMaxDepth levels deep looking for .git/
+// directories, skipping hidden directories and pruning at each repo found.
 func DiscoverRepos(projectDir string) ([]string, error) {
 	// Check if projectDir itself is a git repo
 	gitDir := filepath.Join(projectDir, ".git")
@@ -98,22 +103,44 @@ func DiscoverRepos(projectDir string) ([]string, error) {
 		return []string{abs}, nil
 	}
 
-	entries, err := os.ReadDir(projectDir)
+	absRoot, err := filepath.Abs(projectDir)
 	if err != nil {
-		return nil, fmt.Errorf("scan %s for repos: %w", projectDir, err)
+		return nil, fmt.Errorf("resolve %s: %w", projectDir, err)
 	}
 
 	var repos []string
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
+	err = filepath.WalkDir(absRoot, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return filepath.SkipDir
 		}
-		child := filepath.Join(projectDir, entry.Name())
-		childGit := filepath.Join(child, ".git")
-		if info, err := os.Stat(childGit); err == nil && (info.IsDir() || info.Mode().IsRegular()) {
-			abs, _ := filepath.Abs(child)
-			repos = append(repos, abs)
+		if !d.IsDir() {
+			return nil
 		}
+		// Skip hidden directories (but not the root itself)
+		if path != absRoot && strings.HasPrefix(d.Name(), ".") {
+			return filepath.SkipDir
+		}
+		// Enforce depth limit
+		rel, _ := filepath.Rel(absRoot, path)
+		depth := strings.Count(rel, string(filepath.Separator)) + 1
+		if rel == "." {
+			depth = 0
+		}
+		if depth > discoverMaxDepth {
+			return filepath.SkipDir
+		}
+		// Check for .git in this directory
+		if depth > 0 {
+			dotGit := filepath.Join(path, ".git")
+			if info, err := os.Stat(dotGit); err == nil && (info.IsDir() || info.Mode().IsRegular()) {
+				repos = append(repos, path)
+				return filepath.SkipDir // don't descend into repos
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scan %s for repos: %w", projectDir, err)
 	}
 	return repos, nil
 }

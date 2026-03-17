@@ -161,6 +161,50 @@ func TestDiscoverReposNone(t *testing.T) {
 	}
 }
 
+func TestDiscoverReposDeepNesting(t *testing.T) {
+	dir := t.TempDir()
+	// Depth 2: org/repo
+	// Depth 3: org/group/repo
+	// Depth 4: org/group/subgroup/repo
+	for _, path := range []string{
+		"org1/repo-a",
+		"org1/repo-b",
+		"org2/services/svc-x",
+		"org2/services/providers/svc-y",
+	} {
+		if err := os.MkdirAll(filepath.Join(dir, path, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Hidden dirs should be skipped (e.g., .gitlab-ci-local)
+	if err := os.MkdirAll(filepath.Join(dir, "org1", "repo-a", ".gitlab-ci-local", "builds", ".docker", ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Non-repo dir should be ignored
+	if err := os.MkdirAll(filepath.Join(dir, "org1", "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	repos, err := DiscoverRepos(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	sort.Strings(repos)
+	if len(repos) != 4 {
+		t.Fatalf("expected 4 repos, got %d: %v", len(repos), repos)
+	}
+	names := make([]string, len(repos))
+	for i, r := range repos {
+		names[i] = filepath.Base(r)
+	}
+	sort.Strings(names)
+	expected := []string{"repo-a", "repo-b", "svc-x", "svc-y"}
+	for i, want := range expected {
+		if names[i] != want {
+			t.Errorf("repos[%d] = %q, want %q (all: %v)", i, names[i], want, names)
+		}
+	}
+}
+
 func TestResolveGitRepo(t *testing.T) {
 	issue := Issue{
 		ID:       "bd-test",
