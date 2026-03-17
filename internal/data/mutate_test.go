@@ -1,7 +1,9 @@
 package data
 
 import (
+	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 )
 
@@ -104,6 +106,98 @@ func TestRemoveWorktreeNoMetadata(t *testing.T) {
 	err := RemoveWorktree(issue, "/tmp/fake-project")
 	if err == nil {
 		t.Error("expected error for issue with no worktree metadata")
+	}
+}
+
+func TestDiscoverReposIsGitRepo(t *testing.T) {
+	dir := t.TempDir()
+	// Make dir itself a git repo
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	repos, err := DiscoverRepos(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(repos) != 1 || repos[0] != dir {
+		t.Errorf("expected [%s], got %v", dir, repos)
+	}
+}
+
+func TestDiscoverReposChildren(t *testing.T) {
+	dir := t.TempDir()
+	// Create child repos
+	for _, name := range []string{"alpha", "beta"} {
+		child := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Join(child, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Create a non-repo child
+	if err := os.Mkdir(filepath.Join(dir, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	repos, err := DiscoverRepos(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	sort.Strings(repos)
+	if len(repos) != 2 {
+		t.Fatalf("expected 2 repos, got %d: %v", len(repos), repos)
+	}
+	if filepath.Base(repos[0]) != "alpha" || filepath.Base(repos[1]) != "beta" {
+		t.Errorf("unexpected repos: %v", repos)
+	}
+}
+
+func TestDiscoverReposNone(t *testing.T) {
+	dir := t.TempDir()
+	repos, err := DiscoverRepos(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(repos) != 0 {
+		t.Errorf("expected 0 repos, got %v", repos)
+	}
+}
+
+func TestResolveGitRepo(t *testing.T) {
+	issue := Issue{
+		ID:       "bd-test",
+		Metadata: map[string]interface{}{"git_repo": "/tmp/nonexistent-repo"},
+	}
+	// Falls back to projectDir when metadata path doesn't exist
+	got := ResolveGitRepo(issue, "/fallback")
+	if got != "/fallback" {
+		t.Errorf("expected /fallback, got %s", got)
+	}
+
+	// Uses metadata when path exists
+	dir := t.TempDir()
+	issue.Metadata["git_repo"] = dir
+	got = ResolveGitRepo(issue, "/fallback")
+	if got != dir {
+		t.Errorf("expected %s, got %s", dir, got)
+	}
+}
+
+func TestGitRepoPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		issue    Issue
+		expected string
+	}{
+		{"nil metadata", Issue{}, ""},
+		{"empty metadata", Issue{Metadata: map[string]interface{}{}}, ""},
+		{"has git_repo", Issue{Metadata: map[string]interface{}{"git_repo": "/path/to/repo"}}, "/path/to/repo"},
+		{"non-string git_repo", Issue{Metadata: map[string]interface{}{"git_repo": 42}}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := GitRepoPath(tt.issue); got != tt.expected {
+				t.Errorf("GitRepoPath() = %q, want %q", got, tt.expected)
+			}
+		})
 	}
 }
 

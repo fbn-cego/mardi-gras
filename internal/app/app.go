@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 
 	"charm.land/bubbles/v2/textinput"
@@ -175,6 +176,10 @@ type Model struct {
 	// Deferred printable key handling for non-text-entry modes.
 	pendingKeys  []pendingDeferredKey
 	pendingKeyID uint64
+
+	// Repo picker state (multi-repo worktree support)
+	repoPicking      bool
+	repoPickerIssue  string // issue ID waiting for repo selection
 }
 
 // New creates a new app model from loaded issues.
@@ -603,6 +608,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 			return m, nil
+		}
+		if m.repoPicking {
+			m.repoPicking = false
+			issueID := m.repoPickerIssue
+			m.repoPickerIssue = ""
+			if result.Cancelled {
+				return m, nil
+			}
+			// Desc holds the full repo path
+			repoPath := m.palette.SelectedDesc()
+			// Look up the issue
+			if iss, ok := m.cachedIssueMap[issueID]; ok && iss != nil {
+				return m.doCreateWorktree(*iss, repoPath)
+			}
+			toast, dismissCmd := components.ShowToast("Issue no longer available", components.ToastError, 3*time.Second)
+			m.toast = toast
+			return m, dismissCmd
 		}
 		if !result.Cancelled {
 			return m.executePaletteAction(result.Action)
@@ -1780,8 +1802,8 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// Resolve working directory: prefer worktree if set and valid
-		cwd := m.projectDir
+		// Resolve working directory: prefer worktree if set and valid, then git_repo
+		cwd := data.ResolveGitRepo(*issue, m.projectDir)
 		if wt := data.WorktreePath(*issue); wt != "" {
 			if info, statErr := os.Stat(wt); statErr == nil && info.IsDir() {
 				cwd = wt
@@ -2215,14 +2237,75 @@ func createBranchCmd(ctx context.Context, projectDir, branch string) *exec.Cmd {
 }
 
 // createWorktree creates a git worktree for the selected issue.
+// If projectDir is not a git repo, discovers repos in children and shows a picker if needed.
 func (m Model) createWorktree() (tea.Model, tea.Cmd) {
 	issue := m.parade.SelectedIssue
 	if issue == nil {
 		return m, nil
 	}
-	issueCopy := *issue
+
+	// If issue already has a git_repo set, use it directly
+	if repo := data.GitRepoPath(*issue); repo != "" {
+		return m.doCreateWorktree(*issue, repo)
+	}
+
+	// Discover repos under projectDir
+	repos, err := data.DiscoverRepos(m.projectDir)
+	if err != nil {
+		toast, dismissCmd := components.ShowToast(
+			fmt.Sprintf("Repo discovery: %s", err),
+			components.ToastError,
+			5*time.Second,
+		)
+		m.toast = toast
+		return m, dismissCmd
+	}
+
+	switch len(repos) {
+	case 0:
+		toast, dismissCmd := components.ShowToast(
+			"No git repos found under project root",
+			components.ToastError,
+			5*time.Second,
+		)
+		m.toast = toast
+		return m, dismissCmd
+	case 1:
+		return m.doCreateWorktree(*issue, repos[0])
+	default:
+		// Multiple repos — show picker
+		return m.openRepoPicker(issue.ID, repos)
+	}
+}
+
+// openRepoPicker shows a palette with available git repos for worktree creation.
+func (m Model) openRepoPicker(issueID string, repos []string) (tea.Model, tea.Cmd) {
+	cmds := make([]components.PaletteCommand, len(repos))
+	for i, repo := range repos {
+		cmds[i] = components.PaletteCommand{
+			Name:   filepath.Base(repo),
+			Desc:   repo,
+			Action: components.ActionRepoSelect,
+		}
+	}
+	m.repoPicking = true
+	m.repoPickerIssue = issueID
+	m.showPalette = true
+	m.palette = components.NewPalette(m.width, m.height, cmds)
+	return m, m.palette.Init()
+}
+
+// doCreateWorktree stores the git_repo metadata and creates the worktree.
+func (m Model) doCreateWorktree(issue data.Issue, gitRepo string) (tea.Model, tea.Cmd) {
+	issueCopy := issue
 	return m, func() tea.Msg {
-		path, err := data.CreateWorktree(issueCopy, m.projectDir)
+		// Store repo choice in metadata (idempotent for single-repo case)
+		if data.GitRepoPath(issueCopy) == "" {
+			if err := data.SetGitRepoMetadata(issueCopy.ID, gitRepo); err != nil {
+				return worktreeErrorMsg{issueID: issueCopy.ID, err: fmt.Errorf("set git_repo metadata: %w", err)}
+			}
+		}
+		path, err := data.CreateWorktree(issueCopy, gitRepo, gitRepo)
 		if err != nil {
 			return worktreeErrorMsg{issueID: issueCopy.ID, err: err}
 		}
